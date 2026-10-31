@@ -347,6 +347,18 @@ function getSystemDirectory(request) {
   const serialNumber = validateSegment(request?.serialNumber, 'serial number');
   const partNumber = validateSegment(request?.partNumber, 'part number');
   const customerName = validateSegment(request?.customerName, 'customer name');
+  const expectedFolderName = `${serialNumber}_${partNumber}_${customerName}`;
+  if (typeof request?.systemFolderPath === 'string' && request.systemFolderPath.trim()) {
+    const systemFolderPath = path.resolve(request.systemFolderPath.trim());
+    if (
+      !path.isAbsolute(request.systemFolderPath.trim()) ||
+      path.basename(systemFolderPath).toLowerCase() !== expectedFolderName.toLowerCase()
+    ) {
+      throw new Error('The configured network system folder does not match the traveller details.');
+    }
+    return systemFolderPath;
+  }
+
   const configuredLocation = typeof request?.saveLocation === 'string'
     ? request.saveLocation.trim()
     : '';
@@ -355,8 +367,144 @@ function getSystemDirectory(request) {
     throw new Error('The Save location must be an absolute local or network directory path.');
   }
 
-  return path.join(saveLocation, `${serialNumber}_${partNumber}_${customerName}`);
+  return path.join(saveLocation, expectedFolderName);
 }
+
+function validatePathSegment(value, label) {
+  const segment = typeof value === 'string' ? value.trim() : '';
+  if (
+    !segment ||
+    segment === '.' ||
+    segment === '..' ||
+    /[<>:"/\\|?*\u0000-\u001f]/.test(segment) ||
+    /[. ]$/.test(segment)
+  ) {
+    throw new Error(`Enter a valid ${label} before updating the network save location.`);
+  }
+  return segment;
+}
+
+function getConfiguredNetworkSystemRoot(configuredLocation) {
+  if (typeof configuredLocation !== 'string' || !configuredLocation.trim() ||
+      !path.isAbsolute(configuredLocation.trim())) {
+    throw new Error('Configure an absolute Test Data Copies network location in Settings.');
+  }
+
+  let root = path.resolve(configuredLocation.trim());
+  if (
+    path.basename(root).toLowerCase() === 'digital test sheets' &&
+    path.basename(path.dirname(root)).toLowerCase() === 'internal data'
+  ) {
+    root = path.resolve(root, '..', '..', '..');
+  }
+  return root;
+}
+
+ipcMain.handle('update-network-save-location', async (event, request) => {
+  try {
+    const serialNumber = validatePathSegment(request?.serialNumber, 'serial number');
+    const partNumber = validatePathSegment(request?.partNumber, 'part number');
+    const customerName = validatePathSegment(request?.customerName, 'customer name');
+    const configuredRoot = getConfiguredNetworkSystemRoot(request?.configuredLocation);
+    const rootStats = await fs.promises.stat(configuredRoot);
+    if (!rootStats.isDirectory()) {
+      throw new Error('The configured Test Data Copies location is not a folder.');
+    }
+
+    const expectedName = `${serialNumber}_${partNumber}_${customerName}`;
+    const legacySuffix = `_${partNumber}_${customerName}`.toLowerCase();
+    const entries = await fs.promises.readdir(configuredRoot, { withFileTypes: true });
+    const matches = entries.filter((entry) =>
+      entry.isDirectory() && entry.name.toLowerCase().endsWith(legacySuffix)
+    );
+    if (matches.length > 1) {
+      throw new Error(
+        `More than one network folder matches Part Number "${partNumber}" and Customer Name "${customerName}". Resolve the duplicates manually.`
+      );
+    }
+
+    let systemDirectory = path.join(configuredRoot, expectedName);
+    let renamed = false;
+    let created = false;
+    if (matches.length === 1) {
+      const currentDirectory = path.join(configuredRoot, matches[0].name);
+      if (path.resolve(currentDirectory).toLowerCase() !== path.resolve(systemDirectory).toLowerCase()) {
+        try {
+          await fs.promises.access(systemDirectory);
+          throw new Error(`The destination network folder already exists: ${systemDirectory}`);
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+        }
+        await fs.promises.rename(currentDirectory, systemDirectory);
+        renamed = true;
+      } else {
+        systemDirectory = currentDirectory;
+      }
+    } else {
+      await fs.promises.mkdir(systemDirectory);
+      created = true;
+    }
+
+    const children = await fs.promises.readdir(systemDirectory, { withFileTypes: true });
+    return {
+      success: true,
+      directory: systemDirectory,
+      folderNames: children.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort(),
+      renamed,
+      created
+    };
+  } catch (error) {
+    console.error('Failed to update network save location:', error);
+    return { success: false, error: `Could not update network save location: ${error.message}` };
+  }
+});
+
+ipcMain.handle('save-motor-scan-results', async (event, request) => {
+  try {
+    const serialNumber = validatePathSegment(request?.serialNumber, 'serial number');
+    const systemDirectory = getSystemDirectory({
+      serialNumber,
+      partNumber: request?.partNumber,
+      customerName: request?.customerName,
+      systemFolderPath: request?.systemFolderPath
+    });
+    const stats = await fs.promises.stat(systemDirectory);
+    if (!stats.isDirectory()) throw new Error('The network system folder does not exist.');
+    if (!Array.isArray(request?.entries) || request.entries.length === 0) {
+      throw new Error('Scan and record at least one motor before saving results.');
+    }
+
+    const lines = [
+      'Pre System Test - Motor Scan',
+      `Serial Number: ${serialNumber}`,
+      `Saved: ${new Date().toISOString()}`,
+      ''
+    ];
+    request.entries.forEach((entry, index) => {
+      if (
+        typeof entry?.motorName !== 'string' || !entry.motorName.trim() ||
+        typeof entry?.instruction !== 'string' || !entry.instruction.trim() ||
+        typeof entry?.result !== 'string' || !entry.result.trim()
+      ) {
+        throw new Error(`Enter the motor name, instruction, and result for motor ${index + 1}.`);
+      }
+      lines.push(
+        `${index + 1}. ${entry.motorName.trim()}`,
+        `Instruction: ${entry.instruction.trim()}`,
+        `Result: ${entry.result.trim()}`,
+        ''
+      );
+    });
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filePath = path.join(systemDirectory, `Pre System Test Motor Scan ${timestamp}.txt`);
+    await fs.promises.writeFile(filePath, `${lines.join('\r\n')}\r\n`, { flag: 'wx' });
+    return { success: true, filePath };
+  } catch (error) {
+    console.error('Failed to save motor scan results:', error);
+    return { success: false, error: `Could not save motor scan results: ${error.message}` };
+  }
+});
 
 ipcMain.handle('create-system-folders', async (event, request) => {
   try {
@@ -462,7 +610,7 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
     const testSheetMetadata = request.testSheetMetadata || {};
     const requiredTestSheetValues = system === 'inlux'
       ? [
-          ['customer number', testSheetMetadata.customerNumber],
+          ['customer name', testSheetMetadata.customerName],
           ['job number', testSheetMetadata.jobNumber],
           ['serial number', testSheetMetadata.serialNumber],
           ['power meter serial number', testSheetMetadata.powerMeterSerialNumber],
@@ -472,7 +620,7 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
       ? [
           ['job number', testSheetMetadata.jobNumber],
           ['customer name', testSheetMetadata.customerName],
-          ['system number', testSheetMetadata.systemNumber],
+          ['part number', testSheetMetadata.partNumber],
           ['serial number', testSheetMetadata.serialNumber],
           ['power meter serial number', testSheetMetadata.powerMeterSerialNumber],
           ['power meter head serial number', testSheetMetadata.powerMeterHeadSerialNumber]
@@ -579,11 +727,10 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
           targetPath,
           (testSheetMetadata.jobNumber || '').trim(),
           (testSheetMetadata.customerName || '').trim(),
-          (testSheetMetadata.systemNumber || '').trim(),
+          (testSheetMetadata.partNumber || '').trim(),
           (testSheetMetadata.serialNumber || '').trim(),
           (testSheetMetadata.powerMeterSerialNumber || '').trim(),
-          (testSheetMetadata.powerMeterHeadSerialNumber || '').trim(),
-          (testSheetMetadata.customerNumber || '').trim()
+          (testSheetMetadata.powerMeterHeadSerialNumber || '').trim()
         ]);
       }
       files.push(targetPath);

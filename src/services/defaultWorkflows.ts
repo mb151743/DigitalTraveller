@@ -40,15 +40,8 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
         name: PRE_SYSTEM_TEST_STEP_NAME,
         stage: 'Set Up',
         instructions: [...PRE_SYSTEM_TEST_STEP_INSTRUCTIONS],
-        checklist: [
-          { id: 'pst1', label: 'Internal DC power supply voltages verified', done: false },
-          { id: 'pst2', label: 'Laser safety interlock loops and microswitches verified', done: false },
-          { id: 'pst3', label: 'Host PC communication and USB/Ethernet links established', done: false }
-        ],
-        measuredData: [
-          { parameter: 'DC 24V Rail', value: '', unit: 'V', tolerance: '24.0 ± 0.5 V' },
-          { parameter: 'DC 5V Rail', value: '', unit: 'V', tolerance: '5.0 ± 0.2 V' }
-        ]
+        checklist: [],
+        measuredData: []
       },
       {
         name: SYSTEM_UNBOXING_STEP_NAME,
@@ -67,7 +60,7 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
       },
       {
         name: 'Rayleigh Cut-off Filter Calibration',
-        stage: 'Set Up',
+        stage: 'Calibration',
         instructions: [
           'Tune edge filter angle to achieve low wavenumber cut-off.',
           'Verify rejection optical density > OD 6 at excitation wavelength.',
@@ -80,7 +73,7 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
       },
       {
         name: 'CCD Detector Cooling & Dark Count Test',
-        stage: 'Set Up',
+        stage: 'Calibration',
         instructions: [
           'Cool Peltier CCD to operational setpoint (-70°C).',
           'Measure dark noise over 60s integration with shutter closed.',

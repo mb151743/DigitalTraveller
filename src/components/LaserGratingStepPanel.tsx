@@ -15,7 +15,7 @@ interface LaserGratingStepPanelProps {
   combinations: LaserGratingCombination[];
   onChange: (combinations: LaserGratingCombination[]) => void;
   onCreateFiles: (overwrite: boolean) => Promise<LaserGratingFileResult>;
-  onComplete: () => void;
+  onComplete: (files: string[]) => void;
 }
 
 export const LaserGratingStepPanel: React.FC<LaserGratingStepPanelProps> = ({
@@ -96,7 +96,7 @@ export const LaserGratingStepPanel: React.FC<LaserGratingStepPanelProps> = ({
 
       const directory = result.files[0]?.replace(/[\\/][^\\/]*$/, '') || '';
       setMessage(`Created ${result.files.length} blank file(s) in ${directory}.`);
-      onComplete();
+      onComplete(result.files);
     } catch (error) {
       setIsError(true);
       setMessage(error instanceof Error ? error.message : 'File creation failed.');

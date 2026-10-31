@@ -9,7 +9,10 @@ import {
   StepStatus,
   SystemFolderResult,
   TestSheetResult,
-  DigitalTestSheetMetadata
+  DigitalTestSheetMetadata,
+  MotorScanEntry,
+  MotorScanSaveResult,
+  NetworkSaveLocationOperationResult
 } from './types/traveller';
 import { StorageService } from './services/storageService';
 import { WorkflowService } from './services/workflowService';
@@ -18,7 +21,7 @@ import { WorkflowTabs } from './components/WorkflowTabs';
 import { StepList } from './components/StepList';
 import { StepDialog } from './components/StepDialog';
 import { TravellerSummary } from './components/TravellerSummary';
-import { BarcodeModal } from './components/BarcodeModal';
+import { SystemDetailsModal } from './components/SystemDetailsModal';
 import { WorkflowConfigModal } from './components/WorkflowConfigModal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { NewTravellerModal } from './components/NewTravellerModal';
@@ -32,13 +35,19 @@ import { PcCleanupPanel } from './components/PcCleanupPanel';
 import {
   RECORD_SYSTEM_DETAILS_STEP_INSTRUCTIONS,
   RECORD_SYSTEM_DETAILS_STEP_NAME,
+  SAVE_WIRE_PASSWORDS_STEP_NAME,
+  SAVE_WIRE_PASSWORDS_STEP_INSTRUCTIONS,
+  UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME,
+  UPDATE_NETWORK_SAVE_LOCATION_STEP_INSTRUCTIONS,
   SYSTEM_UNBOXING_STEP_INSTRUCTIONS,
   SYSTEM_UNBOXING_STEP_NAME,
   SYSTEM_FOLDERS_STEP_NAME,
   SYSTEM_FOLDERS_STEP_INSTRUCTIONS,
   CREATE_TEST_SHEETS_STEP_NAME,
   CREATE_TEST_SHEETS_STEP_INSTRUCTIONS,
-  LASER_GRATING_SELECTION_STEP_NAME
+  LASER_GRATING_SELECTION_STEP_NAME,
+  PRE_SYSTEM_TEST_STEP_NAME,
+  PRE_SYSTEM_TEST_STEP_INSTRUCTIONS
 } from './services/laserGratingWorkflow';
 
 export const App: React.FC = () => {
@@ -61,7 +70,7 @@ export const App: React.FC = () => {
 
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [isStepDialogOpen, setIsStepDialogOpen] = useState(false);
-  const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
+  const [isSystemDetailsModalOpen, setIsSystemDetailsModalOpen] = useState(false);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [isAdminSettingsOpen, setIsAdminSettingsOpen] = useState(false);
   const [isWireKeyModalOpen, setIsWireKeyModalOpen] = useState(false);
@@ -299,6 +308,7 @@ export const App: React.FC = () => {
     customerName: string;
     jobNumber: string;
     partNumber: string;
+    wirePasswords?: string[];
   }) => {
     setTraveller((prev) => {
       const s = details.serialNumber.trim();
@@ -311,7 +321,15 @@ export const App: React.FC = () => {
       const prevJ = (prev.jobNumber || '').trim();
       const prevP = (prev.partNumber || '').trim();
 
-      if (s === prevS && c === prevC && j === prevJ && p === prevP) {
+      const passwords = Array.from({ length: 4 }, (_, index) =>
+        (details.wirePasswords?.[index] ?? prev.wirePasswords?.[index] ?? '').trim()
+      );
+      if (
+        s === prevS && c === prevC && j === prevJ && p === prevP &&
+        JSON.stringify(passwords) === JSON.stringify(
+          Array.from({ length: 4 }, (_, index) => prev.wirePasswords?.[index] || '')
+        )
+      ) {
         return prev;
       }
 
@@ -321,6 +339,7 @@ export const App: React.FC = () => {
         customerName: c,
         jobNumber: j,
         partNumber: p,
+        wirePasswords: passwords,
         updatedAt: new Date().toISOString(),
         auditLog: [
           {
@@ -335,6 +354,24 @@ export const App: React.FC = () => {
       };
     });
     setNotification('Hardware & unit details updated');
+  };
+
+  const handleSaveWireKey = (key: string) => {
+    setTraveller((prev) => {
+      const updated = { ...prev, wireKey: key, updatedAt: new Date().toISOString() };
+      const saveKeyStep = prev.steps.find((step) => step.name === SAVE_WIRE_PASSWORDS_STEP_NAME);
+      return saveKeyStep
+        ? WorkflowService.updateStepStatus(
+            updated,
+            saveKeyStep.id,
+            'Complete',
+            prev.operatorName,
+            'WiRE key saved to System Details.'
+          )
+        : updated;
+    });
+    setIsWireKeyModalOpen(false);
+    setNotification('WiRE Key saved to System Details');
   };
 
   // Handle New Traveller click: opens confirmation modal with reset warning
@@ -442,30 +479,24 @@ export const App: React.FC = () => {
         ]
       };
 
-      const preStep = newSteps.find((s) => s.name === 'Pre System Test') || {
+      const preStep = newSteps.find((s) => s.name === PRE_SYSTEM_TEST_STEP_NAME) || {
         id: `step-${traveller.system}-pre-${Date.now().toString(36)}`,
-        name: 'Pre System Test',
+        name: PRE_SYSTEM_TEST_STEP_NAME,
         stage: 'Set Up',
         status: 'Not Started',
         completedAt: null,
         startedAt: null,
         technician: '',
         notes: '',
-        instructions: [
-          'Perform initial pre-system inspection and hardware check.',
-          'Verify all internal DC power supply rails (24V, 12V, 5V) before main system boot.',
-          'Verify communication interfaces (USB / Ethernet) with host PC.',
-          'Confirm emergency stop circuit and laser safety interlock operation.'
-        ],
-        checklist: [
-          { id: 'pst1', label: 'Internal DC power supply voltages verified', done: false },
-          { id: 'pst2', label: 'Laser safety interlock loops and microswitches verified', done: false },
-          { id: 'pst3', label: 'Host PC communication and USB/Ethernet links established', done: false }
-        ],
-        measuredData: [
-          { parameter: 'DC 24V Rail', value: '', unit: 'V', tolerance: '24.0 ± 0.5 V' },
-          { parameter: 'DC 5V Rail', value: '', unit: 'V', tolerance: '5.0 ± 0.2 V' }
-        ]
+        instructions: [...PRE_SYSTEM_TEST_STEP_INSTRUCTIONS],
+        checklist: [],
+        measuredData: []
+      };
+      const normalizedPreStep = {
+        ...preStep,
+        instructions: [...PRE_SYSTEM_TEST_STEP_INSTRUCTIONS],
+        checklist: [],
+        measuredData: []
       };
 
       const setupStep = newSteps.find(
@@ -497,6 +528,21 @@ export const App: React.FC = () => {
         checklist: [],
         measuredData: []
       };
+      const saveWirePasswordsStep = newSteps.find(
+        (step) => step.name === SAVE_WIRE_PASSWORDS_STEP_NAME
+      ) || {
+        id: `step-${traveller.system}-save-wire-passwords-${Date.now().toString(36)}`,
+        name: SAVE_WIRE_PASSWORDS_STEP_NAME,
+        stage: 'Set Up',
+        status: 'Not Started' as const,
+        completedAt: null,
+        startedAt: null,
+        technician: '',
+        notes: '',
+        instructions: [...SAVE_WIRE_PASSWORDS_STEP_INSTRUCTIONS],
+        checklist: [],
+        measuredData: []
+      };
 
       const folderStep = newSteps.find((s) => s.name === SYSTEM_FOLDERS_STEP_NAME) || {
         id: `step-${traveller.system}-system-folders-${Date.now().toString(36)}`,
@@ -511,13 +557,29 @@ export const App: React.FC = () => {
         checklist: [],
         measuredData: []
       };
+      const networkSaveLocationStep =
+        newSteps.find((s) => s.name === UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME) || {
+          id: `step-${traveller.system}-network-save-location-${Date.now().toString(36)}`,
+          name: UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME,
+          stage: 'Set Up',
+          status: 'Not Started',
+          completedAt: null,
+          startedAt: null,
+          technician: '',
+          notes: '',
+          instructions: [...UPDATE_NETWORK_SAVE_LOCATION_STEP_INSTRUCTIONS],
+          checklist: [],
+          measuredData: []
+        };
 
       const otherSteps = newSteps.filter((s) =>
         s.name !== 'PAT Test' &&
-        s.name !== 'Pre System Test' &&
+        s.name !== PRE_SYSTEM_TEST_STEP_NAME &&
         s.name !== SYSTEM_UNBOXING_STEP_NAME &&
         s.name !== 'System & PC Unboxing & Set Up' &&
         s.name !== RECORD_SYSTEM_DETAILS_STEP_NAME &&
+        s.name !== SAVE_WIRE_PASSWORDS_STEP_NAME &&
+        s.name !== UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME &&
         s.name !== SYSTEM_FOLDERS_STEP_NAME
       ).map((s) => {
         let stage = s.stage === 'Setup' ? 'Set Up' : s.stage;
@@ -525,7 +587,7 @@ export const App: React.FC = () => {
           stage = 'Calibration';
         }
         if (s.name === 'Rayleigh Cut-off Filter Calibration' || s.name === 'CCD Detector Cooling & Dark Count Test') {
-          stage = 'Set Up';
+          stage = 'Calibration';
         }
         return { ...s, stage };
       });
@@ -536,9 +598,11 @@ export const App: React.FC = () => {
 
       normalizedSteps = [
         { ...patStep, stage: 'Set Up' },
-        { ...preStep, stage: 'Set Up' },
+        { ...normalizedPreStep, stage: 'Set Up' },
         { ...setupStep, stage: 'Set Up', name: SYSTEM_UNBOXING_STEP_NAME },
         { ...detailsStep, stage: 'Set Up' },
+        { ...saveWirePasswordsStep, stage: 'Set Up' },
+        { ...networkSaveLocationStep, stage: 'Set Up' },
         { ...folderStep, stage: 'Set Up' },
         ...setUpOthers,
         ...calibOthers,
@@ -595,7 +659,43 @@ export const App: React.FC = () => {
             checklist: [],
             measuredData: []
           };
+      const existingSaveWirePasswordsStep = newSteps.find(
+        (step) => step.name === SAVE_WIRE_PASSWORDS_STEP_NAME
+      );
+      const saveWirePasswordsStep = existingSaveWirePasswordsStep
+        ? { ...existingSaveWirePasswordsStep, stage: 'Set Up' }
+        : {
+            id: `step-${traveller.system}-save-wire-passwords-${Date.now().toString(36)}`,
+            name: SAVE_WIRE_PASSWORDS_STEP_NAME,
+            stage: 'Set Up',
+            status: 'Not Started' as const,
+            completedAt: null,
+            startedAt: null,
+            technician: '',
+            notes: '',
+            instructions: [...SAVE_WIRE_PASSWORDS_STEP_INSTRUCTIONS],
+            checklist: [],
+            measuredData: []
+          };
       const existingFolderStep = newSteps.find((step) => step.name === SYSTEM_FOLDERS_STEP_NAME);
+      const existingNetworkSaveLocationStep = newSteps.find(
+        (step) => step.name === UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME
+      );
+      const networkSaveLocationStep = existingNetworkSaveLocationStep
+        ? { ...existingNetworkSaveLocationStep, stage: 'Set Up' }
+        : {
+            id: `step-${traveller.system}-network-save-location-${Date.now().toString(36)}`,
+            name: UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME,
+            stage: 'Set Up',
+            status: 'Not Started' as const,
+            completedAt: null,
+            startedAt: null,
+            technician: '',
+            notes: '',
+            instructions: [...UPDATE_NETWORK_SAVE_LOCATION_STEP_INSTRUCTIONS],
+            checklist: [],
+            measuredData: []
+          };
       const folderStep = existingFolderStep
         ? { ...existingFolderStep, stage: 'Set Up' }
         : {
@@ -611,11 +711,13 @@ export const App: React.FC = () => {
             checklist: [],
             measuredData: []
           };
-      normalizedSteps = [unboxingStep, detailsStep, folderStep, ...newSteps.filter(
+      normalizedSteps = [unboxingStep, detailsStep, saveWirePasswordsStep, networkSaveLocationStep, folderStep, ...newSteps.filter(
         (step) => ![
           SYSTEM_UNBOXING_STEP_NAME,
           'System & PC Unboxing & Set Up',
           RECORD_SYSTEM_DETAILS_STEP_NAME,
+          SAVE_WIRE_PASSWORDS_STEP_NAME,
+          UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME,
           SYSTEM_FOLDERS_STEP_NAME
         ].includes(step.name) && step !== setupStep
       ).map((s) => ({
@@ -702,7 +804,8 @@ export const App: React.FC = () => {
       traveller.customerName || '',
       StorageService.getSaveLocation(),
       traveller.laserGratingCombinations || [],
-      overwrite
+      overwrite,
+      traveller.networkSystemFolderPath
     );
     if (result.success) {
       const directory = result.files[0]?.replace(/[\\/][^\\/]*$/, '') || '';
@@ -726,12 +829,67 @@ export const App: React.FC = () => {
       traveller.serialNumber,
       traveller.partNumber || '',
       traveller.customerName || '',
-      StorageService.getSaveLocation()
+      StorageService.getSaveLocation(),
+      traveller.networkSystemFolderPath
     );
     if (result.success) {
       setNotification(`Created system folder structure in ${result.directory}`);
     }
     return result;
+  };
+
+  const handleUpdateNetworkSaveLocation =
+    async (): Promise<NetworkSaveLocationOperationResult> => {
+      const updateLocation = window.desktopAPI?.updateNetworkSaveLocation;
+      if (!updateLocation) {
+        return {
+          success: false,
+          error: 'Updating the network save location is available in the Windows desktop app only.'
+        };
+      }
+
+      const configuredLocation = NetworkShareConfigService
+        .getLocationsForSystem(traveller.system)
+        .find((location) => location.category === 'Test Data Copies')?.path || '';
+      return updateLocation(
+        traveller.serialNumber,
+        traveller.partNumber || '',
+        traveller.customerName || '',
+        configuredLocation
+      );
+    };
+
+  const handleNetworkSystemFolderUpdated = (directory: string) => {
+    setTraveller((current) => ({
+      ...current,
+      networkSystemFolderPath: directory,
+      updatedAt: new Date().toISOString()
+    }));
+  };
+
+  const handleSaveMotorScanResults = async (
+    entries: MotorScanEntry[]
+  ): Promise<MotorScanSaveResult> => {
+    const saveResults = window.desktopAPI?.saveMotorScanResults;
+    if (!saveResults) {
+      return {
+        success: false,
+        error: 'Saving motor scan results is available in the Windows desktop app only.'
+      };
+    }
+    if (!traveller.networkSystemFolderPath) {
+      return {
+        success: false,
+        error: 'Complete Update Network Save Location before saving motor scan results.'
+      };
+    }
+    return saveResults(
+      traveller.networkSystemFolderPath,
+      traveller.serialNumber,
+      traveller.partNumber || '',
+      traveller.customerName || '',
+      entries
+    );
   };
 
   const handleCreateTestSheets = async (
@@ -773,6 +931,7 @@ export const App: React.FC = () => {
       StorageService.getSaveLocation(),
       masterSheet.path,
       masterRecordsFolder.path,
+      traveller.networkSystemFolderPath,
       traveller.laserGratingCombinations || [],
       overwrite,
       testSheetMetadata
@@ -824,7 +983,7 @@ export const App: React.FC = () => {
         onSelectStage={handleSelectStage}
         onAddTab={handleAddTab}
         onChangeOperator={handleChangeOperator}
-        onOpenBarcodeModal={() => setIsBarcodeModalOpen(true)}
+        onOpenSystemDetails={() => setIsSystemDetailsModalOpen(true)}
         isCleanupOpen={isCleanupOpen}
         onOpenCleanup={() => {
           setIsCleanupOpen(true);
@@ -908,7 +1067,6 @@ export const App: React.FC = () => {
           setWireKeySerial(traveller.serialNumber);
           setIsWireKeyModalOpen(true);
         }}
-        onOpenSystemDetails={() => setIsBarcodeModalOpen(true)}
         onUpdateDetails={handleUpdateDetails}
         onUpdateStatus={handleUpdateStepStatus}
         onToggleChecklist={handleToggleChecklist}
@@ -922,6 +1080,9 @@ export const App: React.FC = () => {
         onUpdateLaserGratingCombinations={handleUpdateLaserGratingCombinations}
         onCreateLaserGratingFiles={handleCreateLaserGratingFiles}
         onCreateSystemFolders={handleCreateSystemFolders}
+        onUpdateNetworkSaveLocation={handleUpdateNetworkSaveLocation}
+        onNetworkSystemFolderUpdated={handleNetworkSystemFolderUpdated}
+        onSaveMotorScanResults={handleSaveMotorScanResults}
         system={traveller.system}
         onCreateTestSheets={handleCreateTestSheets}
         digitalTestSheetSettings={DigitalTestSheetSettingsService.get()}
@@ -929,14 +1090,10 @@ export const App: React.FC = () => {
       />
 
       {/* Barcode & Unit Details Scanner Modal Dialog */}
-      <BarcodeModal
-        isOpen={isBarcodeModalOpen}
-        currentSerial={traveller.serialNumber}
-        currentCustomerName={traveller.customerName}
-        currentJobNumber={traveller.jobNumber}
-        currentPartNumber={traveller.partNumber}
-        currentSystem={traveller.system}
-        onClose={() => setIsBarcodeModalOpen(false)}
+      <SystemDetailsModal
+        isOpen={isSystemDetailsModalOpen}
+        traveller={traveller}
+        onClose={() => setIsSystemDetailsModalOpen(false)}
         onUpdateDetails={handleUpdateDetails}
       />
 
@@ -971,26 +1128,7 @@ export const App: React.FC = () => {
         initialSerialNumber={wireKeySerial || traveller.serialNumber}
         theme={theme}
         onClose={() => setIsWireKeyModalOpen(false)}
-        onApplyKeyToNotes={(key) => {
-          if (selectedStepId) {
-            const step = traveller.steps.find((s) => s.id === selectedStepId);
-            const currentNotes = step?.notes || '';
-            const updatedNotes = currentNotes
-              ? `${currentNotes}\nWiRE Feature Permission Key: ${key}`
-              : `WiRE Feature Permission Key: ${key}`;
-            const updated = WorkflowService.updateStepStatus(
-              traveller,
-              selectedStepId,
-              step ? step.status : 'In Progress',
-              traveller.operatorName,
-              updatedNotes
-            );
-            setTraveller(updated);
-            setNotification(`WiRE Key added to step "${step?.name || selectedStepId}" notes`);
-          } else {
-            setNotification(`WiRE Key copied: ${key}`);
-          }
-        }}
+        onSaveKey={handleSaveWireKey}
       />
 
       {/* Confirmation Modal for +New Traveller */}

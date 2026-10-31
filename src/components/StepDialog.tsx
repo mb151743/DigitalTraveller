@@ -5,6 +5,9 @@ import {
   SystemFolderResult,
   TestSheetResult,
   DigitalTestSheetMetadata,
+  MotorScanEntry,
+  MotorScanSaveResult,
+  NetworkSaveLocationOperationResult,
   WorkflowStep,
   StepStatus
 } from '../types/traveller';
@@ -12,7 +15,10 @@ import { StorageService } from '../services/storageService';
 import {
   LASER_GRATING_FILES_STEP_NAME,
   LASER_GRATING_SELECTION_STEP_NAME,
+  PRE_SYSTEM_TEST_STEP_NAME,
+  UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME,
   RECORD_SYSTEM_DETAILS_STEP_NAME,
+  SAVE_WIRE_PASSWORDS_STEP_NAME,
   SYSTEM_FOLDERS_STEP_NAME,
   CREATE_TEST_SHEETS_STEP_NAME,
   validateLaserGratingCombinations
@@ -20,8 +26,9 @@ import {
 import { LaserGratingStepPanel } from './LaserGratingStepPanel';
 import { DigitalTestSheetSettings } from '../services/digitalTestSheetSettingsService';
 import { 
-  X, CheckCircle, Clock, RotateCcw, AlertTriangle, FileText, 
-  CheckSquare, Square, Check, UserCheck, User, KeyRound, Briefcase, Tag, Hash 
+  X, CheckCircle, Clock, RotateCcw, AlertTriangle, FileText,
+  CheckSquare, Square, Check, UserCheck, User, KeyRound, Briefcase, Tag, Hash,
+  Plus, Trash2, Save, ScanLine, FolderOpen
 } from 'lucide-react';
 
 function normalizeTestSheetMetadata(
@@ -30,16 +37,15 @@ function normalizeTestSheetMetadata(
   return {
     jobNumber: metadata.jobNumber.trim(),
     customerName: metadata.customerName.trim(),
-    systemNumber: metadata.systemNumber.trim(),
+    partNumber: metadata.partNumber.trim(),
     serialNumber: metadata.serialNumber.trim(),
-    customerNumber: metadata.customerNumber.trim(),
     powerMeterSerialNumber: metadata.powerMeterSerialNumber.trim(),
     powerMeterHeadSerialNumber: metadata.powerMeterHeadSerialNumber.trim()
   };
 }
 
 const INLUX_TEST_SHEET_FIELDS: Array<[keyof DigitalTestSheetMetadata, string]> = [
-  ['customerNumber', 'Customer Number (C2)'],
+  ['customerName', 'Customer Name (C2)'],
   ['jobNumber', 'Job Number (C3)'],
   ['serialNumber', 'Serial Number (F3)'],
   ['powerMeterSerialNumber', 'Power Meter S/N (E10)'],
@@ -49,14 +55,14 @@ const INLUX_TEST_SHEET_FIELDS: Array<[keyof DigitalTestSheetMetadata, string]> =
 const VIRSA_TEST_SHEET_FIELDS: Array<[keyof DigitalTestSheetMetadata, string]> = [
   ['jobNumber', 'Job Number (C2)'],
   ['customerName', 'Customer Name (E2)'],
-  ['systemNumber', 'System Number (G2)'],
+  ['partNumber', 'Part Number (G2)'],
   ['serialNumber', 'Serial Number (I2)'],
   ['powerMeterSerialNumber', 'Power Meter S/N (C5)'],
   ['powerMeterHeadSerialNumber', 'Power Meter Head S/N (E5)']
 ];
 
 const INLUX_REQUIRED_TEST_SHEET_FIELDS: Array<keyof DigitalTestSheetMetadata> = [
-  'customerNumber',
+  'customerName',
   'jobNumber',
   'serialNumber',
   'powerMeterSerialNumber',
@@ -66,7 +72,7 @@ const INLUX_REQUIRED_TEST_SHEET_FIELDS: Array<keyof DigitalTestSheetMetadata> = 
 const VIRSA_REQUIRED_TEST_SHEET_FIELDS: Array<keyof DigitalTestSheetMetadata> = [
   'jobNumber',
   'customerName',
-  'systemNumber',
+  'partNumber',
   'serialNumber',
   'powerMeterSerialNumber',
   'powerMeterHeadSerialNumber'
@@ -79,7 +85,6 @@ interface StepDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenWireKey?: () => void;
-  onOpenSystemDetails?: () => void;
   onUpdateStatus: (stepId: string, status: StepStatus, notes?: string, technician?: string) => void;
   onToggleChecklist: (stepId: string, checklistId: string) => void;
   onUpdateMeasurement: (stepId: string, paramIndex: number, value: string) => void;
@@ -88,6 +93,7 @@ interface StepDialogProps {
     customerName: string;
     jobNumber: string;
     partNumber: string;
+    wirePasswords?: string[];
   }) => void;
   serialNumber: string;
   jobNumber: string;
@@ -98,6 +104,9 @@ interface StepDialogProps {
   onUpdateLaserGratingCombinations: (combinations: LaserGratingCombination[]) => void;
   onCreateLaserGratingFiles: (overwrite: boolean) => Promise<LaserGratingFileResult>;
   onCreateSystemFolders: () => Promise<SystemFolderResult>;
+  onUpdateNetworkSaveLocation: () => Promise<NetworkSaveLocationOperationResult>;
+  onNetworkSystemFolderUpdated: (directory: string) => void;
+  onSaveMotorScanResults: (entries: MotorScanEntry[]) => Promise<MotorScanSaveResult>;
   system: string;
   onCreateTestSheets: (
     overwrite: boolean,
@@ -119,7 +128,6 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   isOpen,
   onClose,
   onOpenWireKey,
-  onOpenSystemDetails,
   onUpdateStatus,
   onToggleChecklist,
   onUpdateMeasurement,
@@ -133,6 +141,9 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   onUpdateLaserGratingCombinations,
   onCreateLaserGratingFiles,
   onCreateSystemFolders,
+  onUpdateNetworkSaveLocation,
+  onNetworkSystemFolderUpdated,
+  onSaveMotorScanResults,
   system,
   onCreateTestSheets,
   digitalTestSheetSettings,
@@ -142,13 +153,18 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   const [completionError, setCompletionError] = useState<string | null>(null);
   const [isCreatingSystemFolders, setIsCreatingSystemFolders] = useState(false);
   const [isCreatingTestSheets, setIsCreatingTestSheets] = useState(false);
+  const [isUpdatingNetworkLocation, setIsUpdatingNetworkLocation] = useState(false);
+  const [isSavingMotorScan, setIsSavingMotorScan] = useState(false);
+  const [hasStartedMotorScan, setHasStartedMotorScan] = useState(false);
+  const [motorScanEntries, setMotorScanEntries] = useState<MotorScanEntry[]>([]);
+  const [networkFolderNames, setNetworkFolderNames] = useState<string[]>([]);
+  const [networkSystemFolder, setNetworkSystemFolder] = useState('');
   const [isTestSheetDataPromptOpen, setIsTestSheetDataPromptOpen] = useState(false);
   const [testSheetMetadata, setTestSheetMetadata] = useState<DigitalTestSheetMetadata>({
     jobNumber,
     customerName,
-    systemNumber: '',
+    partNumber,
     serialNumber,
-    customerNumber: '',
     powerMeterSerialNumber: digitalTestSheetSettings.powerMeterSerialNumber,
     powerMeterHeadSerialNumber: digitalTestSheetSettings.powerMeterHeadSerialNumber
   });
@@ -158,8 +174,12 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   const isLaserSelectionStep = step.name === LASER_GRATING_SELECTION_STEP_NAME;
   const isLaserFilesStep = step.name === LASER_GRATING_FILES_STEP_NAME;
   const isRecordSystemDetailsStep = step.name === RECORD_SYSTEM_DETAILS_STEP_NAME;
+  const isSaveWirePasswordsStep = step.name === SAVE_WIRE_PASSWORDS_STEP_NAME;
   const isSystemFoldersStep = step.name === SYSTEM_FOLDERS_STEP_NAME;
   const isCreateTestSheetsStep = step.name === CREATE_TEST_SHEETS_STEP_NAME;
+  const isPreSystemTestStep = step.name === PRE_SYSTEM_TEST_STEP_NAME;
+  const isUpdateNetworkSaveLocationStep =
+    step.name === UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME;
 
   // Local state for inline system details inputs on the Setup procedure page
   const [localSerial, setLocalSerial] = useState(serialNumber || '');
@@ -172,6 +192,10 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
     setNotes(step.notes || '');
     setSignoffTechnician(step.technician || operatorName || 'M. Brown');
     setCompletionError(null);
+    setNetworkFolderNames([]);
+    setNetworkSystemFolder('');
+    setHasStartedMotorScan(false);
+    setMotorScanEntries([]);
   }, [step, operatorName]);
 
   useEffect(() => {
@@ -185,15 +209,15 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
     setTestSheetMetadata({
       jobNumber: jobNumber || '',
       customerName: customerName || '',
-      systemNumber: '',
+      partNumber: partNumber || '',
       serialNumber: serialNumber || '',
-      customerNumber: '',
       powerMeterSerialNumber: digitalTestSheetSettings.powerMeterSerialNumber || '',
       powerMeterHeadSerialNumber: digitalTestSheetSettings.powerMeterHeadSerialNumber || ''
     });
   }, [
     jobNumber,
     customerName,
+    partNumber,
     serialNumber,
     digitalTestSheetSettings.powerMeterSerialNumber,
     digitalTestSheetSettings.powerMeterHeadSerialNumber,
@@ -227,6 +251,92 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
     if (field === 'customer') setLocalCustomer(value);
     if (field === 'job') setLocalJob(value);
     if (field === 'part') setLocalPart(value);
+  };
+
+  const handleStartMotorScan = () => {
+    setHasStartedMotorScan(true);
+    setMotorScanEntries((current) => current.length > 0
+      ? current
+      : [{ motorName: '', instruction: '', result: '' }]);
+    setCompletionError(null);
+  };
+
+  const updateMotorScanEntry = (
+    index: number,
+    field: keyof MotorScanEntry,
+    value: string
+  ) => {
+    setMotorScanEntries((current) =>
+      current.map((entry, entryIndex) =>
+        entryIndex === index ? { ...entry, [field]: value } : entry
+      )
+    );
+  };
+
+  const handleSaveMotorScanResults = async () => {
+    setIsSavingMotorScan(true);
+    setCompletionError(null);
+    try {
+      const result = await onSaveMotorScanResults(motorScanEntries);
+      if (!result.success) {
+        setCompletionError(result.error);
+        return;
+      }
+
+      const report = [
+        `Motor scan results saved to: ${result.filePath}`,
+        ...motorScanEntries.map(
+          (entry, index) =>
+            `${index + 1}. ${entry.motorName.trim()} — ${entry.result.trim()}`
+        )
+      ].join('\n');
+      setNotes(report);
+      onUpdateStatus(step.id, 'Complete', report, signoffTechnician);
+      onClose();
+    } catch (error) {
+      setCompletionError(
+        error instanceof Error ? error.message : 'Could not save motor scan results.'
+      );
+    } finally {
+      setIsSavingMotorScan(false);
+    }
+  };
+
+  const handleUpdateNetworkSaveLocation = async () => {
+    setIsUpdatingNetworkLocation(true);
+    setCompletionError(null);
+    try {
+      const result = await onUpdateNetworkSaveLocation();
+      if (!result.success) {
+        setCompletionError(result.error);
+        return;
+      }
+
+      onNetworkSystemFolderUpdated(result.directory);
+      setNetworkSystemFolder(result.directory);
+      setNetworkFolderNames(result.folderNames);
+      const report = [
+        `Network system folder: ${result.directory}`,
+        result.renamed
+          ? 'Existing folder renamed to include the system serial number.'
+          : result.created
+          ? 'Created a new network system folder.'
+          : 'Existing network system folder already has the correct name.',
+        'Folders found:',
+        ...(result.folderNames.length > 0
+          ? result.folderNames.map((name) => `- ${name}`)
+          : ['- (none)'])
+      ].join('\n');
+      setNotes(report);
+      onUpdateStatus(step.id, 'Complete', report, signoffTechnician);
+      onClose();
+    } catch (error) {
+      setCompletionError(
+        error instanceof Error ? error.message : 'Could not update the network save location.'
+      );
+    } finally {
+      setIsUpdatingNetworkLocation(false);
+    }
   };
 
   // Press Escape on keyboard to close without completing
@@ -335,6 +445,18 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   };
 
   const handleMarkComplete = async () => {
+    if (isUpdateNetworkSaveLocationStep) {
+      await handleUpdateNetworkSaveLocation();
+      return;
+    }
+    if (isPreSystemTestStep) {
+      if (!hasStartedMotorScan) {
+        setCompletionError('Select Scan motors and record each motor before saving the test results.');
+        return;
+      }
+      await handleSaveMotorScanResults();
+      return;
+    }
     if (isRecordSystemDetailsStep) {
       if ([localSerial, localCustomer, localJob, localPart].some((value) => !value.trim())) {
         setCompletionError(
@@ -401,8 +523,10 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
     onClose();
   };
 
-  const handleLaserFilesCreated = () => {
-    onUpdateStatus(step.id, 'Complete', notes, signoffTechnician);
+  const handleLaserFilesCreated = (files: string[]) => {
+    const report = `Created files:\n${files.map((file) => file.split(/[\\/]/).pop()).join('\n')}`;
+    setNotes(report);
+    onUpdateStatus(step.id, 'Complete', report, signoffTechnician);
     onClose();
   };
 
@@ -529,6 +653,121 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
             </div>
           )}
 
+          {isUpdateNetworkSaveLocationStep && (
+            <section className="space-y-3 rounded-lg border border-blue-800/70 bg-blue-950/30 p-4">
+              <p className="text-xs text-slate-300">
+                Find the existing network folder by Part Number and Customer Name, add the Serial
+                Number to its name, or create a new folder. The folders already inside it will be
+                listed and saved in this step.
+              </p>
+              <button
+                type="button"
+                onClick={handleUpdateNetworkSaveLocation}
+                disabled={isUpdatingNetworkLocation}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
+              >
+                <FolderOpen className="h-4 w-4" />
+                {isUpdatingNetworkLocation ? 'Updating network folder…' : 'Find or Create Network Folder'}
+              </button>
+              {networkSystemFolder && (
+                <div className="rounded border border-slate-700 bg-slate-950/60 p-3">
+                  <p className="break-all font-mono text-[11px] text-emerald-300">{networkSystemFolder}</p>
+                  <p className="mt-2 text-[11px] font-semibold text-slate-300">Folders in system folder</p>
+                  {networkFolderNames.length > 0 ? (
+                    <ul className="mt-1 list-inside list-disc space-y-1 text-[11px] text-slate-400">
+                      {networkFolderNames.map((name) => <li key={name}>{name}</li>)}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-[11px] text-slate-500">(none)</p>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
+          {isPreSystemTestStep && (
+            <section className="space-y-3 rounded-lg border border-blue-800/70 bg-blue-950/30 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-xs font-semibold text-slate-100">Motor scan</h3>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Scan the instrument motors, then record the detected motor name, its test
+                    instruction, and the result. The application does not currently have a direct
+                    motor-controller discovery interface.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleStartMotorScan}
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-500"
+                >
+                  <ScanLine className="h-4 w-4" />
+                  Scan motors
+                </button>
+              </div>
+              {hasStartedMotorScan && (
+                <div className="space-y-3">
+                  {motorScanEntries.map((entry, index) => (
+                    <div key={index} className="grid grid-cols-1 gap-2 rounded border border-slate-700 bg-slate-950/60 p-3 sm:grid-cols-3">
+                      <label className="space-y-1 text-[11px] text-slate-400">
+                        <span>Motor name / ID</span>
+                        <input
+                          value={entry.motorName}
+                          onChange={(event) => updateMotorScanEntry(index, 'motorName', event.target.value)}
+                          placeholder="Detected motor"
+                          className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-100"
+                        />
+                      </label>
+                      <label className="space-y-1 text-[11px] text-slate-400">
+                        <span>Test instruction</span>
+                        <textarea
+                          value={entry.instruction}
+                          onChange={(event) => updateMotorScanEntry(index, 'instruction', event.target.value)}
+                          placeholder="Instruction for this motor"
+                          rows={2}
+                          className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-100"
+                        />
+                      </label>
+                      <div className="flex gap-2">
+                        <label className="flex-1 space-y-1 text-[11px] text-slate-400">
+                          <span>Test result</span>
+                          <textarea
+                            value={entry.result}
+                            onChange={(event) => updateMotorScanEntry(index, 'result', event.target.value)}
+                            placeholder="Pass, fail, observation…"
+                            rows={2}
+                            className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-100"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setMotorScanEntries((current) =>
+                            current.filter((_, entryIndex) => entryIndex !== index)
+                          )}
+                          aria-label={`Remove motor ${index + 1}`}
+                          className="self-end rounded p-2 text-slate-400 hover:bg-rose-950 hover:text-rose-300"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setMotorScanEntries((current) => [
+                      ...current,
+                      { motorName: '', instruction: '', result: '' }
+                    ])}
+                    className="inline-flex items-center gap-1.5 rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add motor
+                  </button>
+                </div>
+              )}
+            </section>
+          )}
+
           {isCreateTestSheetsStep && (
             <div className="rounded-lg border border-blue-800/70 bg-blue-950/30 p-3 text-xs text-slate-300">
               Completing this step copies the read-only master sheet configured in Settings into
@@ -543,16 +782,6 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
                 <span className="text-xs font-semibold text-slate-200 uppercase tracking-wide">
                   Record System Numbers &amp; Details
                 </span>
-                {onOpenWireKey && (
-                  <button
-                    type="button"
-                    onClick={onOpenWireKey}
-                    className="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-lg border border-indigo-500/40 bg-indigo-600/20 px-2.5 py-1 text-xs font-semibold text-indigo-300 hover:bg-indigo-600/30 transition-colors"
-                  >
-                    <KeyRound className="h-3.5 w-3.5" />
-                    Get WiRE Key
-                  </button>
-                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
@@ -616,6 +845,27 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
                   />
                 </div>
               </div>
+            </section>
+          )}
+
+          {isSaveWirePasswordsStep && (
+            <section className="flex flex-col gap-3 rounded-lg border border-indigo-800/70 bg-indigo-950/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-xs font-semibold text-slate-100">WiRE key and passwords</h3>
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Get and save the WiRE key here. Enter or update WiRE Passwords 1–4 in System Details.
+                </p>
+              </div>
+              {onOpenWireKey && (
+                <button
+                  type="button"
+                  onClick={onOpenWireKey}
+                  className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-lg border border-indigo-500/40 bg-indigo-600/30 px-3 py-2 text-xs font-semibold text-indigo-200 hover:bg-indigo-600/50"
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  Get WiRE Key
+                </button>
+              )}
             </section>
           )}
 
@@ -769,17 +1019,30 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
               <button
                 type="button"
                 onClick={handleMarkComplete}
-                disabled={isCreatingSystemFolders || isCreatingTestSheets}
+                disabled={
+                  isCreatingSystemFolders ||
+                  isCreatingTestSheets ||
+                  isUpdatingNetworkLocation ||
+                  isSavingMotorScan
+                }
                 className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/30 flex items-center space-x-1.5 transition-all"
               >
                 <CheckCircle className="w-3.5 h-3.5" />
                   <span>
                     {isCreatingTestSheets
                       ? 'Creating test sheets…'
+                      : isUpdatingNetworkLocation
+                      ? 'Updating network location…'
+                      : isSavingMotorScan
+                      ? 'Saving motor results…'
                       : isCreatingSystemFolders
                       ? 'Creating folders…'
                       : isSystemFoldersStep
                       ? 'Create Folders & Mark Complete'
+                      : isUpdateNetworkSaveLocationStep
+                      ? 'Update Network Save Location'
+                      : isPreSystemTestStep
+                      ? 'Save Motor Results to Network'
                       : isCreateTestSheetsStep
                       ? 'Create Test Sheets & Mark Complete'
                       : 'Mark Complete'}
@@ -814,7 +1077,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
                   <input
                     autoComplete="off"
                     autoFocus={
-                      (field === 'systemNumber' || field === 'customerNumber') &&
+                      (field === 'partNumber' || field === 'customerName') &&
                       !testSheetMetadata[field]
                     }
                     type="text"

@@ -12,7 +12,7 @@ interface WorkflowTabsProps {
   onSelectStage: (stage: WorkflowStage) => void;
   onAddTab?: (tabName: string) => void;
   onChangeOperator?: (name: string, isAdmin: boolean) => void;
-  onOpenBarcodeModal?: () => void;
+  onOpenSystemDetails?: () => void;
   isCleanupOpen?: boolean;
   onOpenCleanup?: () => void;
 }
@@ -25,7 +25,7 @@ export const WorkflowTabs: React.FC<WorkflowTabsProps> = ({
   onSelectStage,
   onAddTab,
   onChangeOperator,
-  onOpenBarcodeModal,
+  onOpenSystemDetails,
   isCleanupOpen = false,
   onOpenCleanup
 }) => {
@@ -238,13 +238,13 @@ export const WorkflowTabs: React.FC<WorkflowTabsProps> = ({
       <div className="flex items-center space-x-2 pb-1.5 flex-shrink-0 select-none">
         {/* Unified 4-in-1 System Details Box */}
         <div
-          onClick={onOpenBarcodeModal}
+          onClick={onOpenSystemDetails}
           className={`flex items-center rounded border text-xs cursor-pointer select-none transition-colors shadow-2xs divide-x ${
             isDark
               ? 'bg-slate-950/90 border-slate-800 divide-slate-800 hover:border-slate-700'
               : 'bg-white border-slate-300 divide-slate-200 hover:border-slate-400'
           }`}
-          title="Click to view/edit unit numbers & details"
+          title="Click to view or edit System Details"
         >
           {/* Serial Number */}
           <div className="flex items-center px-2.5 py-1">

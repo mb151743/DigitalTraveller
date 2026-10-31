@@ -58,11 +58,23 @@ The **Create Test Sheets** step follows **Select Laser and Grating Combinations*
 
 - **inLux** creates one file named `<Serial Number>_inLux Test Sheet PT-70151.xlsm`.
 - **Virsa** and **inVia** create one copy per selected combination. Each file is named `<Serial Number>_<Wavelength>nm_<Grating>_<Master Sheet File Name>`.
-- For **Virsa**, each copy is populated with Job Number (C2), Customer Name (E2), System Number (G2), Serial Number (I2), Power Meter Serial Number (C5), and Power Meter Head Serial Number (E5). Missing values are requested before copying. The power meter serial numbers are configurable and saved in Settings for reuse.
-- For **inLux**, the single copy is populated with Customer Number (C2), Job Number (C3), Serial Number (F3), Power Meter Serial Number (E10), and Power Meter Head Serial Number (G10). Missing values are requested before copying. Its meter serial numbers use the same saved Settings defaults.
+- For **Virsa**, each copy is populated with Job Number (C2), Customer Name (E2), Part Number (G2), Serial Number (I2), Power Meter Serial Number (C5), and Power Meter Head Serial Number (E5). Missing values are requested before copying. The power meter serial numbers are configurable and saved in Settings for reuse.
+- For **inLux**, the single copy is populated with Customer Name (C2), Job Number (C3), Serial Number (F3), Power Meter Serial Number (E10), and Power Meter Head Serial Number (G10). Missing values are requested before copying. Its meter serial numbers use the same saved Settings defaults.
 - The step also copies the configured system-specific `Test Acceptance Record.xlsm` and `Minor Deviation Record.xlsm` master files from the **Master Test Acceptance & Minor Deviation Records** folder in Settings into the root of the system folder. The source folder may use the generic filenames or system-prefixed filenames. These copies are not edited during this step.
 
 If any destination file already exists, the app asks before replacing it. This operation is available in the Windows desktop app.
+
+### Network Save Location and Motor Scan
+
+The **Update Network Save Location** step searches the configured **Test Data Copies** network root for an existing system folder matching the traveller's Part Number and Customer Name. A matching folder is renamed to `<Serial Number>_<Part Number>_<Customer Name>`; if none exists, the correctly named folder is created. The step displays and records the child folder names it finds. If multiple folders match, the operator must resolve the ambiguity before continuing.
+
+The **Pre System Test** step provides motor entries for the operator to record each motor, its instruction, and its test result, then saves them in a timestamped text file in the resolved network system folder. Motor discovery is currently manual; automatic controller scanning is not configured.
+
+The **Rayleigh Cut-off Filter Calibration**, **CCD Detector Cooling & Dark Count Test**, **Laser Beam Alignment & Safety Interlocks**, and **Grating Turret & Slit Alignment** workflow steps appear in the **Calibration** stage.
+
+### WiRE Keys and System Details
+
+The **Save WiRE Passwords** step follows **Record System Details** and contains the **Get WiRE Key** action. Saving a generated key stores it with the traveller instead of adding it to step notes. Use the System Details panel beside the technician selector to review the system information in a two-column table and enter or update WiRE Passwords 1–4. The table also summarizes recorded motor names, network child folders, selected laser/grating combinations, and created extra-data file names.
 
 The Windows desktop app stores application settings (including network locations, output location, workflow templates, registered systems, and meter defaults) in `%APPDATA%\DigitalTraveller\config.json`, so those settings can be retained across software versions. Traveller records remain in browser storage.
 

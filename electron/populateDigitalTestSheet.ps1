@@ -3,11 +3,10 @@ param(
   [Parameter(Mandatory = $true)][string]$WorkbookPath,
   [Parameter(Mandatory = $true)][AllowEmptyString()][string]$JobNumber,
   [Parameter(Mandatory = $true)][AllowEmptyString()][string]$CustomerName,
-  [Parameter(Mandatory = $true)][AllowEmptyString()][string]$SystemNumber,
+  [Parameter(Mandatory = $true)][AllowEmptyString()][string]$PartNumber,
   [Parameter(Mandatory = $true)][AllowEmptyString()][string]$SerialNumber,
   [Parameter(Mandatory = $true)][AllowEmptyString()][string]$PowerMeterSerialNumber,
-  [Parameter(Mandatory = $true)][AllowEmptyString()][string]$PowerMeterHeadSerialNumber,
-  [Parameter(Mandatory = $true)][AllowEmptyString()][string]$CustomerNumber
+  [Parameter(Mandatory = $true)][AllowEmptyString()][string]$PowerMeterHeadSerialNumber
 )
 
 $ErrorActionPreference = 'Stop'
@@ -102,7 +101,7 @@ try {
     'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
   )
   if ($System -eq 'inLux') {
-    Set-InlineCellValue $worksheet $worksheetNamespaces 'C2' $CustomerNumber
+    Set-InlineCellValue $worksheet $worksheetNamespaces 'C2' $CustomerName
     Set-InlineCellValue $worksheet $worksheetNamespaces 'C3' $JobNumber
     Set-InlineCellValue $worksheet $worksheetNamespaces 'F3' $SerialNumber
     Set-InlineCellValue $worksheet $worksheetNamespaces 'E10' $PowerMeterSerialNumber
@@ -110,7 +109,7 @@ try {
   } else {
     Set-InlineCellValue $worksheet $worksheetNamespaces 'C2' $JobNumber
     Set-InlineCellValue $worksheet $worksheetNamespaces 'E2' $CustomerName
-    Set-InlineCellValue $worksheet $worksheetNamespaces 'G2' $SystemNumber
+    Set-InlineCellValue $worksheet $worksheetNamespaces 'G2' $PartNumber
     Set-InlineCellValue $worksheet $worksheetNamespaces 'I2' $SerialNumber
     Set-InlineCellValue $worksheet $worksheetNamespaces 'C5' $PowerMeterSerialNumber
     Set-InlineCellValue $worksheet $worksheetNamespaces 'E5' $PowerMeterHeadSerialNumber

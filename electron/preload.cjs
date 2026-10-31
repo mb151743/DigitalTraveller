@@ -10,12 +10,13 @@ contextBridge.exposeInMainWorld('desktopAPI', {
   readNetworkFile: (filePath) => ipcRenderer.invoke('read-network-file', filePath),
   writeNetworkFile: (filePath, data) => ipcRenderer.invoke('write-network-file', { filePath, data }),
   selectNetworkDirectory: () => ipcRenderer.invoke('select-network-directory'),
-  createSystemFolders: (serialNumber, partNumber, customerName, saveLocation) =>
+  createSystemFolders: (serialNumber, partNumber, customerName, saveLocation, systemFolderPath) =>
     ipcRenderer.invoke('create-system-folders', {
       serialNumber,
       partNumber,
       customerName,
-      saveLocation
+      saveLocation,
+      systemFolderPath
     }),
   createTestSheets: (
     system,
@@ -25,6 +26,7 @@ contextBridge.exposeInMainWorld('desktopAPI', {
     saveLocation,
     masterTemplatePath,
     masterRecordTemplatesFolder,
+    systemFolderPath,
     combinations,
     overwrite,
     testSheetMetadata
@@ -36,10 +38,26 @@ contextBridge.exposeInMainWorld('desktopAPI', {
     saveLocation,
     masterTemplatePath,
     masterRecordTemplatesFolder,
+    systemFolderPath,
     combinations,
     overwrite,
     testSheetMetadata
   }),
+  updateNetworkSaveLocation: (serialNumber, partNumber, customerName, configuredLocation) =>
+    ipcRenderer.invoke('update-network-save-location', {
+      serialNumber,
+      partNumber,
+      customerName,
+      configuredLocation
+    }),
+  saveMotorScanResults: (systemFolderPath, serialNumber, partNumber, customerName, entries) =>
+    ipcRenderer.invoke('save-motor-scan-results', {
+      systemFolderPath,
+      serialNumber,
+      partNumber,
+      customerName,
+      entries
+    }),
   loadSettingsConfig: () => ipcRenderer.sendSync('load-settings-config'),
   saveSettingsConfig: (settings) => ipcRenderer.sendSync('save-settings-config', settings),
   createLaserGratingFiles: (
@@ -48,14 +66,16 @@ contextBridge.exposeInMainWorld('desktopAPI', {
     customerName,
     saveLocation,
     combinations,
-    overwrite
+    overwrite,
+    systemFolderPath
   ) => ipcRenderer.invoke('create-laser-grating-files', {
     serialNumber,
     partNumber,
     customerName,
     saveLocation,
     combinations,
-    overwrite
+    overwrite,
+    systemFolderPath
   }),
   searchCleanupFolders: () => ipcRenderer.invoke('search-cleanup-folders'),
   searchArchiveSystemResults: () => ipcRenderer.invoke('search-archive-system-results'),

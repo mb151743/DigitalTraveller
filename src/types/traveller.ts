@@ -27,12 +27,33 @@ export type TestSheetResult =
 export interface DigitalTestSheetMetadata {
   jobNumber: string;
   customerName: string;
-  systemNumber: string;
+  partNumber: string;
   serialNumber: string;
-  customerNumber: string;
   powerMeterSerialNumber: string;
   powerMeterHeadSerialNumber: string;
 }
+
+export interface MotorScanEntry {
+  motorName: string;
+  instruction: string;
+  result: string;
+}
+
+export interface NetworkSaveLocationResult {
+  success: true;
+  directory: string;
+  folderNames: string[];
+  renamed: boolean;
+  created: boolean;
+}
+
+export type NetworkSaveLocationOperationResult =
+  | NetworkSaveLocationResult
+  | { success: false; error: string };
+
+export type MotorScanSaveResult =
+  | { success: true; filePath: string }
+  | { success: false; error: string };
 
 export interface WorkflowStep {
   id: string;
@@ -56,6 +77,9 @@ export interface TravellerRecord {
   customerName?: string;
   jobNumber?: string;
   partNumber?: string;
+  wireKey?: string;
+  wirePasswords?: string[];
+  networkSystemFolderPath?: string;
   operatorName: string;
   createdAt: string;
   updatedAt: string;

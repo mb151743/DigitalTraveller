@@ -21,7 +21,7 @@ interface WireKeyModalProps {
   initialSerialNumber?: string;
   theme?: 'dark' | 'light';
   onClose: () => void;
-  onApplyKeyToNotes?: (key: string) => void;
+  onSaveKey?: (key: string) => void;
 }
 
 export const WireKeyModal: React.FC<WireKeyModalProps> = ({
@@ -29,7 +29,7 @@ export const WireKeyModal: React.FC<WireKeyModalProps> = ({
   initialSerialNumber = '',
   theme = 'dark',
   onClose,
-  onApplyKeyToNotes
+  onSaveKey
 }) => {
   if (!isOpen) return null;
 
@@ -187,9 +187,9 @@ export const WireKeyModal: React.FC<WireKeyModalProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleApplyToNotes = () => {
-    if (!generatedKey || !onApplyKeyToNotes) return;
-    onApplyKeyToNotes(generatedKey);
+  const handleSaveKey = () => {
+    if (!generatedKey || !onSaveKey) return;
+    onSaveKey(generatedKey);
     setApplied(true);
     setTimeout(() => setApplied(false), 2500);
   };
@@ -357,21 +357,21 @@ export const WireKeyModal: React.FC<WireKeyModalProps> = ({
                 </span>
 
                 <div className="flex items-center space-x-2">
-                  {onApplyKeyToNotes && (
+                  {onSaveKey && (
                     <button
                       type="button"
-                      onClick={handleApplyToNotes}
+                      onClick={handleSaveKey}
                       className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center space-x-1.5 transition-colors border border-slate-700"
                     >
                       {applied ? (
                         <>
                           <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span className="text-emerald-400">Added to Notes!</span>
+                          <span className="text-emerald-400">Saved to System Details!</span>
                         </>
                       ) : (
                         <>
                           <FileCheck2 className="w-3.5 h-3.5 text-blue-400" />
-                          <span>Save to Step Notes</span>
+                          <span>Save to System Details</span>
                         </>
                       )}
                     </button>

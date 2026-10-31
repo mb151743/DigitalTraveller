@@ -9,9 +9,15 @@ export const CREATE_TEST_SHEETS_STEP_INSTRUCTIONS = [
 export const LASER_GRATING_FILES_STEP_NAME = 'Create Extra Data Files';
 export const PAT_TEST_STEP_NAME = 'PAT Test';
 export const PRE_SYSTEM_TEST_STEP_NAME = 'Pre System Test';
+export const UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME = 'Update Network Save Location';
 export const SYSTEM_UNBOXING_STEP_NAME = 'System & PC Set Up';
 export const LEGACY_SYSTEM_UNBOXING_STEP_NAME = 'System & PC Unboxing & Set Up';
 export const RECORD_SYSTEM_DETAILS_STEP_NAME = 'Record System Details';
+export const SAVE_WIRE_PASSWORDS_STEP_NAME = 'Save WiRE Passwords';
+export const SAVE_WIRE_PASSWORDS_STEP_INSTRUCTIONS = [
+  'Generate and save the WiRE feature permission key for this system.',
+  'Record the system WiRE passwords in System Details.'
+];
 export const SYSTEM_FOLDERS_STEP_NAME = 'Create System Folders';
 export const LASER_GRATING_FILES_SAVE_INSTRUCTION =
   'Files are saved in the configured system folder under Internal data/Extra Data.';
@@ -28,10 +34,13 @@ export const PAT_TEST_STEP_INSTRUCTIONS = [
   'Affix passed PAT test label with test date, retest period, and tester initials.'
 ];
 export const PRE_SYSTEM_TEST_STEP_INSTRUCTIONS = [
-  'Perform initial pre-system inspection and hardware check.',
-  'Verify all internal DC power supply rails (24V, 12V, 5V) before main system boot.',
-  'Verify communication interfaces (USB / Ethernet) with host PC.',
-  'Confirm emergency stop circuit and laser safety interlock operation.'
+  'Scan the system motors and record the result and any required action for each motor.',
+  'Complete each motor instruction, then save the motor test results to the network.'
+];
+export const UPDATE_NETWORK_SAVE_LOCATION_STEP_INSTRUCTIONS = [
+  'Search the configured network location for a system folder matching the Part Number and Customer Name.',
+  'Rename a matching folder to <Serial Number>_<Part Number>_<Customer Name>, or create that folder when no match exists.',
+  'Review and record the folder names already present in the system folder.'
 ];
 export const SYSTEM_UNBOXING_STEP_INSTRUCTIONS = [
   'Inspect system and PC for transit damage, connect required peripherals, and complete base mechanical set up.'

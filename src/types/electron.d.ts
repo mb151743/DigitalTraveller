@@ -3,7 +3,10 @@ import {
   LaserGratingFileResult,
   SystemFolderResult,
   TestSheetResult,
-  DigitalTestSheetMetadata
+  DigitalTestSheetMetadata,
+  NetworkSaveLocationOperationResult,
+  MotorScanEntry,
+  MotorScanSaveResult
 } from './traveller';
 
 export interface CleanupFolder {
@@ -44,13 +47,15 @@ declare global {
         customerName: string,
         saveLocation: string,
         combinations: LaserGratingCombination[],
-        overwrite: boolean
+        overwrite: boolean,
+        systemFolderPath?: string
       ) => Promise<LaserGratingFileResult>;
       createSystemFolders: (
         serialNumber: string,
         partNumber: string,
         customerName: string,
-        saveLocation: string
+        saveLocation: string,
+        systemFolderPath?: string
       ) => Promise<SystemFolderResult>;
       createTestSheets: (
         system: string,
@@ -60,10 +65,24 @@ declare global {
         saveLocation: string,
         masterTemplatePath: string,
         masterRecordTemplatesFolder: string,
+        systemFolderPath: string | undefined,
         combinations: LaserGratingCombination[],
         overwrite: boolean,
         testSheetMetadata?: DigitalTestSheetMetadata
       ) => Promise<TestSheetResult>;
+      updateNetworkSaveLocation: (
+        serialNumber: string,
+        partNumber: string,
+        customerName: string,
+        configuredLocation: string
+      ) => Promise<NetworkSaveLocationOperationResult>;
+      saveMotorScanResults: (
+        systemFolderPath: string,
+        serialNumber: string,
+        partNumber: string,
+        customerName: string,
+        entries: MotorScanEntry[]
+      ) => Promise<MotorScanSaveResult>;
       loadSettingsConfig: () =>
         | { success: true; settings: Record<string, string> }
         | { success: false; error: string };

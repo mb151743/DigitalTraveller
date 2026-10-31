@@ -11,11 +11,15 @@ import {
   PRE_SYSTEM_TEST_STEP_NAME,
   RECORD_SYSTEM_DETAILS_STEP_INSTRUCTIONS,
   RECORD_SYSTEM_DETAILS_STEP_NAME,
+  SAVE_WIRE_PASSWORDS_STEP_INSTRUCTIONS,
+  SAVE_WIRE_PASSWORDS_STEP_NAME,
   SYSTEM_UNBOXING_STEP_INSTRUCTIONS,
   SYSTEM_UNBOXING_STEP_NAME,
   LEGACY_SYSTEM_UNBOXING_STEP_NAME,
   SYSTEM_FOLDERS_STEP_NAME,
   SYSTEM_FOLDERS_STEP_INSTRUCTIONS,
+  UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME,
+  UPDATE_NETWORK_SAVE_LOCATION_STEP_INSTRUCTIONS,
   PAT_TEST_STEP_INSTRUCTIONS,
   PRE_SYSTEM_TEST_STEP_INSTRUCTIONS
 } from './laserGratingWorkflow';
@@ -47,16 +51,7 @@ const PAT_TEST_TEMPLATE_STEP: WorkflowTemplateItem = {
 const PRE_SYSTEM_TEST_TEMPLATE_STEP: WorkflowTemplateItem = {
   name: PRE_SYSTEM_TEST_STEP_NAME,
   stage: 'Set Up',
-  instructions: [...PRE_SYSTEM_TEST_STEP_INSTRUCTIONS],
-  checklist: [
-    { id: 'pst1', label: 'Internal DC power supply voltages verified', done: false },
-    { id: 'pst2', label: 'Laser safety interlock loops and microswitches verified', done: false },
-    { id: 'pst3', label: 'Host PC communication and USB/Ethernet links established', done: false }
-  ],
-  measuredData: [
-    { parameter: 'DC 24V Rail', value: '', unit: 'V', tolerance: '24.0 ± 0.5 V' },
-    { parameter: 'DC 5V Rail', value: '', unit: 'V', tolerance: '5.0 ± 0.2 V' }
-  ]
+  instructions: [...PRE_SYSTEM_TEST_STEP_INSTRUCTIONS]
 };
 
 const SYSTEM_UNBOXING_TEMPLATE_STEP: WorkflowTemplateItem = {
@@ -71,11 +66,48 @@ const RECORD_SYSTEM_DETAILS_TEMPLATE_STEP: WorkflowTemplateItem = {
   instructions: [...RECORD_SYSTEM_DETAILS_STEP_INSTRUCTIONS]
 };
 
+const SAVE_WIRE_PASSWORDS_TEMPLATE_STEP: WorkflowTemplateItem = {
+  name: SAVE_WIRE_PASSWORDS_STEP_NAME,
+  stage: 'Set Up',
+  instructions: [...SAVE_WIRE_PASSWORDS_STEP_INSTRUCTIONS]
+};
+
 const SYSTEM_FOLDERS_TEMPLATE_STEP: WorkflowTemplateItem = {
   name: SYSTEM_FOLDERS_STEP_NAME,
   stage: 'Set Up',
   instructions: [...SYSTEM_FOLDERS_STEP_INSTRUCTIONS]
 };
+
+const UPDATE_NETWORK_SAVE_LOCATION_TEMPLATE_STEP: WorkflowTemplateItem = {
+  name: UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME,
+  stage: 'Set Up',
+  instructions: [...UPDATE_NETWORK_SAVE_LOCATION_STEP_INSTRUCTIONS]
+};
+
+function ensureNetworkSaveLocationStepAfterDetails(
+  steps: WorkflowTemplateItem[]
+): WorkflowTemplateItem[] {
+  const orderedSteps = [...steps];
+  const wireStepIndex = orderedSteps.findIndex(
+    (step) => step.name === SAVE_WIRE_PASSWORDS_STEP_NAME
+  );
+  const wireStep = wireStepIndex >= 0
+    ? { ...orderedSteps.splice(wireStepIndex, 1)[0], stage: 'Set Up' }
+    : SAVE_WIRE_PASSWORDS_TEMPLATE_STEP;
+  const existingIndex = orderedSteps.findIndex(
+    (step) => step.name === UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME
+  );
+  const updateStep = existingIndex >= 0
+    ? { ...orderedSteps.splice(existingIndex, 1)[0], stage: 'Set Up' }
+    : UPDATE_NETWORK_SAVE_LOCATION_TEMPLATE_STEP;
+  const detailsIndex = orderedSteps.findIndex(
+    (step) => step.name === RECORD_SYSTEM_DETAILS_STEP_NAME
+  );
+  const detailsStepIndex = detailsIndex >= 0 ? detailsIndex : -1;
+  orderedSteps.splice(detailsStepIndex + 1, 0, wireStep);
+  orderedSteps.splice(detailsStepIndex + 2, 0, updateStep);
+  return orderedSteps;
+}
 
 function ensureTestSheetsStepAfterSelection(
   steps: WorkflowTemplateItem[],
@@ -140,8 +172,18 @@ export class WorkflowTemplateService {
 
           let steps = parsed.steps.map((s) => ({
             ...s,
-            stage: s.stage === 'Setup' ? 'Set Up' : s.stage,
-            name: s.name === LEGACY_SYSTEM_UNBOXING_STEP_NAME ? SYSTEM_UNBOXING_STEP_NAME : s.name
+            stage: s.name === 'Rayleigh Cut-off Filter Calibration' ||
+              s.name === 'CCD Detector Cooling & Dark Count Test'
+              ? 'Calibration'
+              : s.stage === 'Setup' ? 'Set Up' : s.stage,
+            name: s.name === LEGACY_SYSTEM_UNBOXING_STEP_NAME ? SYSTEM_UNBOXING_STEP_NAME : s.name,
+            ...(s.name === PRE_SYSTEM_TEST_STEP_NAME
+              ? {
+                  instructions: [...PRE_SYSTEM_TEST_STEP_INSTRUCTIONS],
+                  checklist: [],
+                  measuredData: []
+                }
+              : {})
           }));
 
           const isinVia = normalizedSystem === 'inVia';
@@ -153,14 +195,21 @@ export class WorkflowTemplateService {
               steps[1]?.name === PRE_SYSTEM_TEST_STEP_NAME &&
               steps[2]?.name === SYSTEM_UNBOXING_STEP_NAME &&
               steps[3]?.name === RECORD_SYSTEM_DETAILS_STEP_NAME &&
-              steps[4]?.name === SYSTEM_FOLDERS_STEP_NAME;
+              steps[4]?.name === SAVE_WIRE_PASSWORDS_STEP_NAME &&
+              steps[5]?.name === UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME &&
+              steps[6]?.name === SYSTEM_FOLDERS_STEP_NAME;
 
-            const needsMigration = !hasPat || !hasPre || !hasCorrectOrder || parsed.version !== '2.1.0';
+            const needsMigration = !hasPat || !hasPre || !hasCorrectOrder || parsed.version !== '2.3.0';
             if (needsMigration) {
               const patStep = steps.find((s) => s.name === PAT_TEST_STEP_NAME) || PAT_TEST_TEMPLATE_STEP;
               const preSysStep = steps.find((s) => s.name === PRE_SYSTEM_TEST_STEP_NAME) || PRE_SYSTEM_TEST_TEMPLATE_STEP;
               const setupStep = steps.find((s) => s.name === SYSTEM_UNBOXING_STEP_NAME || s.name === LEGACY_SYSTEM_UNBOXING_STEP_NAME) || SYSTEM_UNBOXING_TEMPLATE_STEP;
               const recordDetailsStep = steps.find((s) => s.name === RECORD_SYSTEM_DETAILS_STEP_NAME) || RECORD_SYSTEM_DETAILS_TEMPLATE_STEP;
+              const saveWirePasswordsStep =
+                steps.find((s) => s.name === SAVE_WIRE_PASSWORDS_STEP_NAME) || SAVE_WIRE_PASSWORDS_TEMPLATE_STEP;
+              const networkSaveLocationStep =
+                steps.find((s) => s.name === UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME) ||
+                UPDATE_NETWORK_SAVE_LOCATION_TEMPLATE_STEP;
               const folderStep = steps.find((s) => s.name === SYSTEM_FOLDERS_STEP_NAME) || SYSTEM_FOLDERS_TEMPLATE_STEP;
 
               const otherSteps = steps.filter((s) =>
@@ -169,15 +218,17 @@ export class WorkflowTemplateService {
                 s.name !== SYSTEM_UNBOXING_STEP_NAME &&
                 s.name !== LEGACY_SYSTEM_UNBOXING_STEP_NAME &&
                 s.name !== RECORD_SYSTEM_DETAILS_STEP_NAME &&
+                s.name !== SAVE_WIRE_PASSWORDS_STEP_NAME &&
+                s.name !== UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME &&
                 s.name !== SYSTEM_FOLDERS_STEP_NAME
               ).map((s) => {
                 // Move laser beam and grating turret to Calibration tab
                 if (s.name === 'Laser Beam Alignment & Safety Interlocks' || s.name === 'Grating Turret & Slit Alignment') {
                   return { ...s, stage: 'Calibration' as const };
                 }
-                // Move Rayleigh Cut-off and CCD Detector Cooling to Set Up tab
+                // Calibration hardware checks belong with the calibration workflow.
                 if (s.name === 'Rayleigh Cut-off Filter Calibration' || s.name === 'CCD Detector Cooling & Dark Count Test') {
-                  return { ...s, stage: 'Set Up' as const };
+                  return { ...s, stage: 'Calibration' as const };
                 }
                 return s;
               });
@@ -218,12 +269,14 @@ export class WorkflowTemplateService {
                   { ...preSysStep, stage: 'Set Up' },
                   { ...setupStep, stage: 'Set Up', name: SYSTEM_UNBOXING_STEP_NAME },
                   { ...recordDetailsStep, stage: 'Set Up' },
+                  { ...saveWirePasswordsStep, stage: 'Set Up' },
+                  { ...networkSaveLocationStep, stage: 'Set Up' },
                   { ...folderStep, stage: 'Set Up' },
                   ...setUpOthers,
                   ...calibOthers,
                   ...restOthers
                 ],
-                version: '2.1.0',
+                version: '2.3.0',
                 lastUpdated: new Date().toISOString()
               };
               this.saveTemplate(updatedTemplate);
@@ -234,7 +287,9 @@ export class WorkflowTemplateService {
           return {
             ...parsed,
             stages,
-            steps: ensureTestSheetsStepAfterSelection(steps, normalizedSystem)
+            steps: ensureNetworkSaveLocationStepAfterDetails(
+              ensureTestSheetsStepAfterSelection(steps, normalizedSystem)
+            )
           };
         }
       }
@@ -280,6 +335,8 @@ export class WorkflowTemplateService {
           preSysStep,
           setupStep,
           RECORD_SYSTEM_DETAILS_TEMPLATE_STEP,
+          SAVE_WIRE_PASSWORDS_TEMPLATE_STEP,
+          UPDATE_NETWORK_SAVE_LOCATION_TEMPLATE_STEP,
           SYSTEM_FOLDERS_TEMPLATE_STEP,
           ...setUpOthers,
           ...calibOthers,
@@ -308,6 +365,8 @@ export class WorkflowTemplateService {
             ]
           },
           RECORD_SYSTEM_DETAILS_TEMPLATE_STEP,
+          SAVE_WIRE_PASSWORDS_TEMPLATE_STEP,
+          UPDATE_NETWORK_SAVE_LOCATION_TEMPLATE_STEP,
           SYSTEM_FOLDERS_TEMPLATE_STEP
         );
       }
@@ -330,6 +389,7 @@ export class WorkflowTemplateService {
           ]
         },
         RECORD_SYSTEM_DETAILS_TEMPLATE_STEP,
+        UPDATE_NETWORK_SAVE_LOCATION_TEMPLATE_STEP,
         SYSTEM_FOLDERS_TEMPLATE_STEP,
         {
           name: `${normalizedSystem} Optical & Sensor Calibration`,
@@ -367,7 +427,7 @@ export class WorkflowTemplateService {
       system: normalizedSystem,
       stages: defaultStages,
       steps: defaultSteps,
-      version: '2.1.0',
+      version: '2.3.0',
       lastUpdated: new Date().toISOString()
     };
 

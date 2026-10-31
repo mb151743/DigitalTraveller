@@ -10,6 +10,10 @@ import {
   PRE_SYSTEM_TEST_STEP_NAME,
   RECORD_SYSTEM_DETAILS_STEP_INSTRUCTIONS,
   RECORD_SYSTEM_DETAILS_STEP_NAME,
+  UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME,
+  UPDATE_NETWORK_SAVE_LOCATION_STEP_INSTRUCTIONS,
+  SAVE_WIRE_PASSWORDS_STEP_NAME,
+  SAVE_WIRE_PASSWORDS_STEP_INSTRUCTIONS,
   SYSTEM_UNBOXING_STEP_INSTRUCTIONS,
   SYSTEM_UNBOXING_STEP_NAME,
   LEGACY_SYSTEM_UNBOXING_STEP_NAME,
@@ -311,7 +315,10 @@ export class StorageService {
     // Normalize existing steps
     const existingSteps = record.steps.map((step) => ({
       ...step,
-      stage: step.stage === 'Setup' ? 'Set Up' : step.stage,
+      stage: step.name === 'Rayleigh Cut-off Filter Calibration' ||
+        step.name === 'CCD Detector Cooling & Dark Count Test'
+        ? 'Calibration'
+        : step.stage === 'Setup' ? 'Set Up' : step.stage,
       name: step.name === LEGACY_SYSTEM_UNBOXING_STEP_NAME ? SYSTEM_UNBOXING_STEP_NAME : step.name
     }));
 
@@ -362,6 +369,12 @@ export class StorageService {
           { parameter: 'DC 5V Rail', value: '', unit: 'V', tolerance: '5.0 ± 0.2 V' }
         ]
       };
+      const normalizedPreStep: WorkflowStep = {
+        ...preStep,
+        instructions: [...PRE_SYSTEM_TEST_STEP_INSTRUCTIONS],
+        checklist: [],
+        measuredData: []
+      };
 
       const existingSetupStep = existingSteps.find(
         (s) => s.name === SYSTEM_UNBOXING_STEP_NAME || s.name === LEGACY_SYSTEM_UNBOXING_STEP_NAME
@@ -399,6 +412,52 @@ export class StorageService {
             measuredData: []
           };
 
+      const existingSaveWirePasswordsStep = existingSteps.find(
+        (step) => step.name === SAVE_WIRE_PASSWORDS_STEP_NAME
+      );
+      const saveWirePasswordsStep: WorkflowStep = existingSaveWirePasswordsStep
+        ? {
+            ...existingSaveWirePasswordsStep,
+            stage: 'Set Up',
+            instructions: [...SAVE_WIRE_PASSWORDS_STEP_INSTRUCTIONS]
+          }
+        : {
+            id: `step-${record.system}-save-wire-passwords-${Date.now().toString(36)}`,
+            name: SAVE_WIRE_PASSWORDS_STEP_NAME,
+            stage: 'Set Up',
+            status: 'Not Started',
+            completedAt: null,
+            startedAt: null,
+            technician: '',
+            notes: '',
+            instructions: [...SAVE_WIRE_PASSWORDS_STEP_INSTRUCTIONS],
+            checklist: [],
+            measuredData: []
+          };
+
+      const existingNetworkSaveLocationStep = existingSteps.find(
+          (step) => step.name === UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME
+      );
+      const networkSaveLocationStep: WorkflowStep = existingNetworkSaveLocationStep
+          ? {
+              ...existingNetworkSaveLocationStep,
+              stage: 'Set Up',
+              instructions: [...UPDATE_NETWORK_SAVE_LOCATION_STEP_INSTRUCTIONS]
+            }
+          : {
+              id: `step-${record.system}-network-save-location-${Date.now().toString(36)}`,
+              name: UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME,
+              stage: 'Set Up',
+              status: 'Not Started',
+              completedAt: null,
+              startedAt: null,
+              technician: '',
+              notes: '',
+              instructions: [...UPDATE_NETWORK_SAVE_LOCATION_STEP_INSTRUCTIONS],
+              checklist: [],
+              measuredData: []
+            };
+
       const existingFolderStep = existingSteps.find((s) => s.name === SYSTEM_FOLDERS_STEP_NAME);
       const folderStep: WorkflowStep = existingFolderStep
         ? { ...existingFolderStep, stage: 'Set Up' }
@@ -423,15 +482,17 @@ export class StorageService {
           s.name !== SYSTEM_UNBOXING_STEP_NAME &&
           s.name !== LEGACY_SYSTEM_UNBOXING_STEP_NAME &&
           s.name !== RECORD_SYSTEM_DETAILS_STEP_NAME &&
+          s.name !== SAVE_WIRE_PASSWORDS_STEP_NAME &&
+          s.name !== UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME &&
           s.name !== SYSTEM_FOLDERS_STEP_NAME
       ).map((s) => {
         // Remap Laser Beam Alignment and Grating Turret to Calibration tab
         if (s.name === 'Laser Beam Alignment & Safety Interlocks' || s.name === 'Grating Turret & Slit Alignment') {
           return { ...s, stage: 'Calibration' };
         }
-        // Remap Rayleigh Cut-off and CCD Detector Cooling to Set Up tab
+        // Keep these hardware calibration checks on the Calibration tab.
         if (s.name === 'Rayleigh Cut-off Filter Calibration' || s.name === 'CCD Detector Cooling & Dark Count Test') {
-          return { ...s, stage: 'Set Up' };
+          return { ...s, stage: 'Calibration' };
         }
         if (s.name === LASER_GRATING_FILES_STEP_NAME && Array.isArray(s.instructions)) {
           return {
@@ -451,6 +512,8 @@ export class StorageService {
           tStep.name !== PRE_SYSTEM_TEST_STEP_NAME &&
           tStep.name !== SYSTEM_UNBOXING_STEP_NAME &&
           tStep.name !== RECORD_SYSTEM_DETAILS_STEP_NAME &&
+          tStep.name !== SAVE_WIRE_PASSWORDS_STEP_NAME &&
+          tStep.name !== UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME &&
           tStep.name !== SYSTEM_FOLDERS_STEP_NAME &&
           !otherSteps.some((s) => s.name === tStep.name)
         ) {
@@ -475,9 +538,11 @@ export class StorageService {
 
       const finalSteps: WorkflowStep[] = [
         patStep,
-        preStep,
+        normalizedPreStep,
         setupStep,
         detailsStep,
+        saveWirePasswordsStep,
+        networkSaveLocationStep,
         folderStep,
         ...setUpOthers,
         ...calibOthers,
@@ -508,6 +573,7 @@ export class StorageService {
     ) || existingSteps.find((step) =>
       (step.stage === 'Set Up' || step.stage === 'Setup') &&
       step.name !== RECORD_SYSTEM_DETAILS_STEP_NAME &&
+      step.name !== UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME &&
       step.name !== SYSTEM_FOLDERS_STEP_NAME
     );
 
@@ -544,6 +610,52 @@ export class StorageService {
           measuredData: []
         };
 
+    const existingSaveWirePasswordsStep = existingSteps.find(
+      (step) => step.name === SAVE_WIRE_PASSWORDS_STEP_NAME
+    );
+    const saveWirePasswordsStep: WorkflowStep = existingSaveWirePasswordsStep
+      ? {
+          ...existingSaveWirePasswordsStep,
+          stage: 'Set Up',
+          instructions: [...SAVE_WIRE_PASSWORDS_STEP_INSTRUCTIONS]
+        }
+      : {
+          id: `step-${record.system}-save-wire-passwords-${Date.now().toString(36)}`,
+          name: SAVE_WIRE_PASSWORDS_STEP_NAME,
+          stage: 'Set Up',
+          status: 'Not Started',
+          completedAt: null,
+          startedAt: null,
+          technician: '',
+          notes: '',
+          instructions: [...SAVE_WIRE_PASSWORDS_STEP_INSTRUCTIONS],
+          checklist: [],
+          measuredData: []
+        };
+
+    const existingNetworkSaveLocationStep = existingSteps.find(
+      (step) => step.name === UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME
+    );
+    const networkSaveLocationStep: WorkflowStep = existingNetworkSaveLocationStep
+      ? {
+          ...existingNetworkSaveLocationStep,
+          stage: 'Set Up',
+          instructions: [...UPDATE_NETWORK_SAVE_LOCATION_STEP_INSTRUCTIONS]
+        }
+      : {
+          id: `step-${record.system}-network-save-location-${Date.now().toString(36)}`,
+          name: UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME,
+          stage: 'Set Up',
+          status: 'Not Started',
+          completedAt: null,
+          startedAt: null,
+          technician: '',
+          notes: '',
+          instructions: [...UPDATE_NETWORK_SAVE_LOCATION_STEP_INSTRUCTIONS],
+          checklist: [],
+          measuredData: []
+        };
+
     const existingSystemFolderStep = existingSteps.find((step) => step.name === SYSTEM_FOLDERS_STEP_NAME);
     const systemFolderStep: WorkflowStep = existingSystemFolderStep
       ? { ...existingSystemFolderStep, stage: 'Set Up' }
@@ -567,19 +679,32 @@ export class StorageService {
           SYSTEM_UNBOXING_STEP_NAME,
           LEGACY_SYSTEM_UNBOXING_STEP_NAME,
           RECORD_SYSTEM_DETAILS_STEP_NAME,
+          SAVE_WIRE_PASSWORDS_STEP_NAME,
+          UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME,
           SYSTEM_FOLDERS_STEP_NAME
         ].includes(step.name) && step !== existingSetupStep
       )
-      .map((step) => step.name === LASER_GRATING_FILES_STEP_NAME
-        ? {
+      .map((step) => {
+        if (step.name === PRE_SYSTEM_TEST_STEP_NAME) {
+          return {
+            ...step,
+            instructions: [...PRE_SYSTEM_TEST_STEP_INSTRUCTIONS],
+            checklist: [],
+            measuredData: []
+          };
+        }
+        if (step.name === LASER_GRATING_FILES_STEP_NAME) {
+          return {
             ...step,
             instructions: (Array.isArray(step.instructions) ? step.instructions : []).map((instruction) =>
               instruction.includes('Files are saved in My Documents')
                 ? LASER_GRATING_FILES_SAVE_INSTRUCTION
                 : instruction
             )
-          }
-        : step);
+          };
+        }
+        return step;
+      });
 
     const testSheetsTemplateStep = template.steps.find(
       (step) => step.name === CREATE_TEST_SHEETS_STEP_NAME
@@ -607,7 +732,14 @@ export class StorageService {
       ...record,
       stages: normalizedStages,
       activeStage,
-      steps: [unboxingStep, detailsStep, systemFolderStep, ...orderedOtherSteps],
+      steps: [
+        unboxingStep,
+        detailsStep,
+        saveWirePasswordsStep,
+        networkSaveLocationStep,
+        systemFolderStep,
+        ...orderedOtherSteps
+      ],
       laserGratingCombinations: Array.isArray(record.laserGratingCombinations)
         ? record.laserGratingCombinations.map((combination) => ({
             wavelengthNm:
