@@ -4,7 +4,7 @@ import { SystemRegistryService } from './systemRegistryService';
 export interface NetworkShareLocation {
   id: string;
   name: string;
-  category: 'Master Sheet' | 'Test Data Copies' | 'Deviations & Acceptance' | 'Custom';
+  category: 'Master Sheet' | 'Test Data Copies' | 'Master Test Records' | 'Custom';
   path: string;
   description: string;
 }
@@ -32,10 +32,10 @@ export const DEFAULT_NETWORK_CONFIGS: Record<string, [NetworkShareLocation, Netw
     },
     {
       id: 'invia-deviations-acceptance',
-      name: 'Deviations & Test Acceptance Records',
-      category: 'Deviations & Acceptance',
-      path: '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Final Test\\Current Test Sheets\\Minor Deviation Record.xlsm',
-      description: 'Master Minor Deviation Record.xlsm & Test Acceptance Record.xlsm templates'
+      name: 'Master Test Acceptance & Minor Deviation Records',
+      category: 'Master Test Records',
+      path: '',
+      description: 'Folder containing the inVia master Test Acceptance Record.xlsm and Minor Deviation Record.xlsm'
     }
   ],
   Virsa: [
@@ -55,10 +55,10 @@ export const DEFAULT_NETWORK_CONFIGS: Record<string, [NetworkShareLocation, Netw
     },
     {
       id: 'virsa-deviations-acceptance',
-      name: 'Deviations & Test Acceptance Records',
-      category: 'Deviations & Acceptance',
-      path: '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Final Test\\Current Test Sheets\\VIRSA Minor Deviation Record.xlsm',
-      description: 'VIRSA Minor Deviation Record.xlsm & VIRSA Test Acceptance Record.xlsm'
+      name: 'Master Test Acceptance & Minor Deviation Records',
+      category: 'Master Test Records',
+      path: '',
+      description: 'Folder containing the Virsa master Test Acceptance Record.xlsm and Minor Deviation Record.xlsm'
     }
   ],
   inLux: [
@@ -78,10 +78,10 @@ export const DEFAULT_NETWORK_CONFIGS: Record<string, [NetworkShareLocation, Netw
     },
     {
       id: 'inlux-deviations-acceptance',
-      name: 'Deviations & Test Acceptance Records',
-      category: 'Deviations & Acceptance',
-      path: '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Final Test\\Current Test Sheets\\inLux Minor Deviation Record.xlsm',
-      description: 'inLux Minor Deviation Record.xlsm & inLux Test Acceptance Record.xlsm'
+      name: 'Master Test Acceptance & Minor Deviation Records',
+      category: 'Master Test Records',
+      path: '',
+      description: 'Folder containing the inLux master Test Acceptance Record.xlsm and Minor Deviation Record.xlsm'
     }
   ]
 };
@@ -111,10 +111,10 @@ export class NetworkShareConfigService {
       },
       {
         id: `${slug}-deviations-acceptance`,
-        name: `${systemName} Deviation & Acceptance Records`,
-        category: 'Deviations & Acceptance',
-        path: `\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Final Test\\Current Test Sheets\\${slug} Minor Deviation Record.xlsm`,
-        description: `Minor Deviation and Test Acceptance copies saved to Internal data\\`
+        name: `${systemName} Master Test Acceptance & Minor Deviation Records`,
+        category: 'Master Test Records',
+        path: '',
+        description: `Folder containing the ${systemName} master Test Acceptance Record.xlsm and Minor Deviation Record.xlsm`
       }
     ];
   }
@@ -125,6 +125,7 @@ export class NetworkShareConfigService {
   static getAllConfigs(): Record<string, [NetworkShareLocation, NetworkShareLocation, NetworkShareLocation]> {
     const registeredSystems = SystemRegistryService.getSystems();
     let configs: Record<string, [NetworkShareLocation, NetworkShareLocation, NetworkShareLocation]> = {};
+    let migratedRecordLocations = false;
 
     try {
       const stored = localStorage.getItem(STORAGE_KEY_NETWORK_SHARES);
@@ -149,6 +150,19 @@ export class NetworkShareConfigService {
       }
     });
 
+    Object.values(configs).forEach((locations) => {
+      const recordLocation = locations[2];
+      if (recordLocation.category !== 'Master Test Records') {
+        recordLocation.category = 'Master Test Records';
+        recordLocation.name = 'Master Test Acceptance & Minor Deviation Records';
+        recordLocation.description =
+          'Folder containing this system’s master Test Acceptance Record.xlsm and Minor Deviation Record.xlsm';
+        recordLocation.path = recordLocation.path.replace(/[\\/][^\\/]+\.xlsm$/i, '');
+        migratedRecordLocations = true;
+      }
+    });
+
+    if (migratedRecordLocations) this.saveAllConfigs(configs);
     return configs;
   }
 

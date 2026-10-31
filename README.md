@@ -52,6 +52,20 @@ The application features a built-in **Excel Hub** (accessed via the top title ba
 
 In the **Calibration** stage, enter each laser wavelength and grating density combination, then open **Create Extra Data Files** to create one blank `.txt` file per combination. Files are saved under `My Documents\<serial number>\Extra Data` using names such as `532nm_2400.txt`. If any target file already exists, the app asks before replacing it. A traveller serial number is required.
 
+### Digital Test Sheets
+
+The **Create Test Sheets** step follows **Select Laser and Grating Combinations**. It copies the configured read-only master workbook from **Settings → Network Shares → Master Test Sheet** into the system folder created by **Create System Folders**, under `Internal data\Digital Test Sheets`. The master workbook is never edited.
+
+- **inLux** creates one file named `<Serial Number>_inLux Test Sheet PT-70151.xlsm`.
+- **Virsa** and **inVia** create one copy per selected combination. Each file is named `<Serial Number>_<Wavelength>nm_<Grating>_<Master Sheet File Name>`.
+- For **Virsa**, each copy is populated with Job Number (C2), Customer Name (E2), System Number (G2), Serial Number (I2), Power Meter Serial Number (C5), and Power Meter Head Serial Number (E5). Missing values are requested before copying. The power meter serial numbers are configurable and saved in Settings for reuse.
+- For **inLux**, the single copy is populated with Customer Number (C2), Job Number (C3), Serial Number (F3), Power Meter Serial Number (E10), and Power Meter Head Serial Number (G10). Missing values are requested before copying. Its meter serial numbers use the same saved Settings defaults.
+- The step also copies the configured system-specific `Test Acceptance Record.xlsm` and `Minor Deviation Record.xlsm` master files from the **Master Test Acceptance & Minor Deviation Records** folder in Settings into the root of the system folder. The source folder may use the generic filenames or system-prefixed filenames. These copies are not edited during this step.
+
+If any destination file already exists, the app asks before replacing it. This operation is available in the Windows desktop app.
+
+The Windows desktop app stores application settings (including network locations, output location, workflow templates, registered systems, and meter defaults) in `%APPDATA%\DigitalTraveller\config.json`, so those settings can be retained across software versions. Traveller records remain in browser storage.
+
 ---
 
 ## 🧹 Final PC Cleanup

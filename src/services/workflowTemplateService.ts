@@ -5,6 +5,8 @@ import {
   LASER_GRATING_FILES_SAVE_INSTRUCTION,
   LASER_GRATING_FILES_STEP_NAME,
   LASER_GRATING_SELECTION_STEP_NAME,
+  CREATE_TEST_SHEETS_STEP_NAME,
+  CREATE_TEST_SHEETS_STEP_INSTRUCTIONS,
   PAT_TEST_STEP_NAME,
   PRE_SYSTEM_TEST_STEP_NAME,
   RECORD_SYSTEM_DETAILS_STEP_INSTRUCTIONS,
@@ -74,6 +76,30 @@ const SYSTEM_FOLDERS_TEMPLATE_STEP: WorkflowTemplateItem = {
   stage: 'Set Up',
   instructions: [...SYSTEM_FOLDERS_STEP_INSTRUCTIONS]
 };
+
+function ensureTestSheetsStepAfterSelection(
+  steps: WorkflowTemplateItem[],
+  system: SystemType
+): WorkflowTemplateItem[] {
+  if (!['inVia', 'Virsa', 'inLux'].includes(system)) return steps;
+  const selectionIndex = steps.findIndex((step) => step.name === LASER_GRATING_SELECTION_STEP_NAME);
+  if (selectionIndex < 0) return steps;
+
+  const orderedSteps = [...steps];
+  const existingIndex = orderedSteps.findIndex((step) => step.name === CREATE_TEST_SHEETS_STEP_NAME);
+  const testSheetsStep = existingIndex >= 0
+    ? { ...orderedSteps.splice(existingIndex, 1)[0], stage: 'Calibration' }
+    : {
+        name: CREATE_TEST_SHEETS_STEP_NAME,
+        stage: 'Calibration',
+        instructions: [...CREATE_TEST_SHEETS_STEP_INSTRUCTIONS]
+      };
+  const updatedSelectionIndex = orderedSteps.findIndex(
+    (step) => step.name === LASER_GRATING_SELECTION_STEP_NAME
+  );
+  orderedSteps.splice(updatedSelectionIndex + 1, 0, testSheetsStep);
+  return orderedSteps;
+}
 
 export interface WorkflowTemplate {
   system: SystemType;
@@ -159,6 +185,7 @@ export class WorkflowTemplateService {
               // Also ensure required calibration steps exist
               const requiredSteps = (SYSTEM_PROFILES.inVia?.defaultSteps || []).filter(
                 (step) => step.name === LASER_GRATING_SELECTION_STEP_NAME ||
+                  step.name === CREATE_TEST_SHEETS_STEP_NAME ||
                   step.name === LASER_GRATING_FILES_STEP_NAME ||
                   step.name === 'Silicon Internal Reference Standard 520.7 cm⁻¹' ||
                   step.name === 'Laser Beam Alignment & Safety Interlocks' ||
@@ -178,9 +205,10 @@ export class WorkflowTemplateService {
                 }
               }
 
-              const setUpOthers = otherSteps.filter((s) => s.stage === 'Set Up');
-              const calibOthers = otherSteps.filter((s) => s.stage === 'Calibration');
-              const restOthers = otherSteps.filter((s) => s.stage !== 'Set Up' && s.stage !== 'Calibration');
+              const orderedOtherSteps = ensureTestSheetsStepAfterSelection(otherSteps, normalizedSystem);
+              const setUpOthers = orderedOtherSteps.filter((s) => s.stage === 'Set Up');
+              const calibOthers = orderedOtherSteps.filter((s) => s.stage === 'Calibration');
+              const restOthers = orderedOtherSteps.filter((s) => s.stage !== 'Set Up' && s.stage !== 'Calibration');
 
               const updatedTemplate: WorkflowTemplate = {
                 system: 'inVia',
@@ -206,7 +234,7 @@ export class WorkflowTemplateService {
           return {
             ...parsed,
             stages,
-            steps
+            steps: ensureTestSheetsStepAfterSelection(steps, normalizedSystem)
           };
         }
       }

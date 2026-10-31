@@ -19,6 +19,21 @@ export type SystemFolderResult =
   | { success: true; directory: string }
   | { success: false; error: string };
 
+export type TestSheetResult =
+  | { success: true; files: string[] }
+  | { success: false; conflicts: string[] }
+  | { success: false; error: string };
+
+export interface DigitalTestSheetMetadata {
+  jobNumber: string;
+  customerName: string;
+  systemNumber: string;
+  serialNumber: string;
+  customerNumber: string;
+  powerMeterSerialNumber: string;
+  powerMeterHeadSerialNumber: string;
+}
+
 export interface WorkflowStep {
   id: string;
   name: string;

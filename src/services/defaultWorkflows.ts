@@ -3,6 +3,8 @@ import {
   LASER_GRATING_FILES_SAVE_INSTRUCTION,
   LASER_GRATING_FILES_STEP_NAME,
   LASER_GRATING_SELECTION_STEP_NAME,
+  CREATE_TEST_SHEETS_STEP_NAME,
+  CREATE_TEST_SHEETS_STEP_INSTRUCTIONS,
   PAT_TEST_STEP_NAME,
   PRE_SYSTEM_TEST_STEP_NAME,
   SYSTEM_UNBOXING_STEP_NAME,
@@ -98,6 +100,11 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
           'Enter each laser wavelength in nm and grating density in lines/mm.',
           'Add one row for each laser and grating combination used for calibration.'
         ]
+      },
+      {
+        name: CREATE_TEST_SHEETS_STEP_NAME,
+        stage: 'Calibration',
+        instructions: [...CREATE_TEST_SHEETS_STEP_INSTRUCTIONS]
       },
       {
         name: LASER_GRATING_FILES_STEP_NAME,
@@ -241,6 +248,11 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
         ]
       },
       {
+        name: CREATE_TEST_SHEETS_STEP_NAME,
+        stage: 'Calibration',
+        instructions: [...CREATE_TEST_SHEETS_STEP_INSTRUCTIONS]
+      },
+      {
         name: LASER_GRATING_FILES_STEP_NAME,
         stage: 'Calibration',
         instructions: [
@@ -350,6 +362,11 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
           'Enter each laser wavelength in nm and grating density in lines/mm.',
           'Add one row for each laser and grating combination used for calibration.'
         ]
+      },
+      {
+        name: CREATE_TEST_SHEETS_STEP_NAME,
+        stage: 'Calibration',
+        instructions: [...CREATE_TEST_SHEETS_STEP_INSTRUCTIONS]
       },
       {
         name: LASER_GRATING_FILES_STEP_NAME,

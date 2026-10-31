@@ -25,6 +25,10 @@ import {
 import { SystemRegistryService } from '../services/systemRegistryService';
 import { ExcelService } from '../services/excelService';
 import { StorageService } from '../services/storageService';
+import {
+  DigitalTestSheetSettingsService,
+  DigitalTestSheetSettings
+} from '../services/digitalTestSheetSettingsService';
 
 interface AdminSettingsModalProps {
   isOpen: boolean;
@@ -69,6 +73,10 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
   const [newSystemInput, setNewSystemInput] = useState('');
   const [newSystemDesc, setNewSystemDesc] = useState('');
   const [saveLocation, setSaveLocation] = useState(StorageService.getSaveLocation);
+  const [digitalTestSheetSettings, setDigitalTestSheetSettings] = useState<DigitalTestSheetSettings>(
+    DigitalTestSheetSettingsService.get
+  );
+  const [virsaSettingsError, setVirsaSettingsError] = useState<string | null>(null);
 
   const multiWorkflowFileInputRef = useRef<HTMLInputElement>(null);
   const excelSyncInputRef = useRef<HTMLInputElement>(null);
@@ -102,6 +110,54 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
   const handleUpdateName = (sys: SystemType, index: 0 | 1 | 2, newName: string) => {
     const updated = NetworkShareConfigService.updateLocation(sys, index, { name: newName });
     setNetworkConfigs({ ...updated });
+  };
+
+  const handleBrowseMasterRecordsFolder = async () => {
+    const selectDirectory = window.desktopAPI?.selectNetworkDirectory;
+    if (!selectDirectory) {
+      setMessage({
+        type: 'error',
+        text: 'Browsing for a master records folder is available in the Windows desktop app. You can enter a path directly.'
+      });
+      return;
+    }
+
+    try {
+      const selectedDirectory = await selectDirectory();
+      if (!selectedDirectory) return;
+      const index = activeSystemLocations.findIndex((location) => location.id === activeLocation.id);
+      if (index >= 0) {
+        const updated = NetworkShareConfigService.updateLocation(
+          selectedSystemFilter,
+          index as 0 | 1 | 2,
+          { path: selectedDirectory }
+        );
+        setNetworkConfigs({ ...updated });
+      }
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: `Could not browse for the master records folder: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`
+      });
+    }
+  };
+
+  const handleUpdateVirsaTestSheetSetting = (
+    field: keyof DigitalTestSheetSettings,
+    value: string
+  ) => {
+    const updated = { ...digitalTestSheetSettings, [field]: value };
+    setDigitalTestSheetSettings(updated);
+    try {
+      DigitalTestSheetSettingsService.save(updated);
+      setVirsaSettingsError(null);
+    } catch (error) {
+      setVirsaSettingsError(
+        error instanceof Error ? error.message : 'Could not save Virsa test sheet settings.'
+      );
+    }
   };
 
   // Copy UNC path to clipboard
@@ -592,7 +648,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                 </div>
               </div>
 
-              {/* 3 Network Locations Cards for the chosen system */}
+              {/* Network locations for the chosen system */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {activeSystemLocations.map((loc, idx) => {
                   const isSelected = loc.id === selectedLocationId;
@@ -671,7 +727,9 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                         <span className="text-emerald-400">{activeLocation.name}</span>
                       </h4>
                       <p className="text-[11px] text-slate-400">
-                        Target directory / spreadsheet path for {selectedSystemFilter}
+                        {activeLocation.category === 'Master Test Records'
+                          ? `Source folder containing both master record workbooks for ${selectedSystemFilter}`
+                          : `Target directory / spreadsheet path for ${selectedSystemFilter}`}
                       </p>
                     </div>
                   </div>
@@ -714,11 +772,64 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                         handleUpdatePath(selectedSystemFilter, idx as 0 | 1 | 2, e.target.value);
                       }
                     }}
-                    placeholder="\\renishaw.com\global\gb\PLC\..."
+                    placeholder={
+                      activeLocation.category === 'Master Test Records'
+                        ? 'Folder containing Test Acceptance Record.xlsm and Minor Deviation Record.xlsm'
+                        : '\\\\renishaw.com\\global\\gb\\PLC\\...'
+                    }
                     className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-hidden focus:border-emerald-500"
                   />
+                  {activeLocation.category === 'Master Test Records' && (
+                    <button
+                      type="button"
+                      onClick={handleBrowseMasterRecordsFolder}
+                      className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+                    >
+                      Browse…
+                    </button>
+                  )}
                 </div>
               </div>
+
+              <section
+                className={`p-4 rounded-xl border space-y-3 ${
+                  isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-white border-slate-200'
+                }`}
+              >
+                <div>
+                  <h4 className="text-xs font-bold text-white">Digital Test Sheet Meter Defaults</h4>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    These power meter serial numbers are saved on this computer and reused for Virsa and inLux test sheets.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="space-y-1 text-[11px] text-slate-400">
+                    <span>Power Meter Serial Number (Virsa C5 / inLux E10)</span>
+                    <input
+                      type="text"
+                      value={digitalTestSheetSettings.powerMeterSerialNumber}
+                      onChange={(event) =>
+                        handleUpdateVirsaTestSheetSetting('powerMeterSerialNumber', event.target.value)
+                      }
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-hidden focus:border-emerald-500"
+                    />
+                  </label>
+                  <label className="space-y-1 text-[11px] text-slate-400">
+                    <span>Power Meter Head Serial Number (Virsa E5 / inLux G10)</span>
+                    <input
+                      type="text"
+                      value={digitalTestSheetSettings.powerMeterHeadSerialNumber}
+                      onChange={(event) =>
+                        handleUpdateVirsaTestSheetSetting('powerMeterHeadSerialNumber', event.target.value)
+                      }
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-hidden focus:border-emerald-500"
+                    />
+                  </label>
+                </div>
+                {virsaSettingsError && (
+                  <p role="alert" className="text-xs text-rose-300">{virsaSettingsError}</p>
+                )}
+              </section>
 
               {/* Action Buttons: Export to Excel and Sync from Excel */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

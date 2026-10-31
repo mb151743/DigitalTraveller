@@ -1,6 +1,11 @@
 import { LaserGratingCombination } from '../types/traveller';
 
 export const LASER_GRATING_SELECTION_STEP_NAME = 'Select Laser and Grating Combinations';
+export const CREATE_TEST_SHEETS_STEP_NAME = 'Create Test Sheets';
+export const CREATE_TEST_SHEETS_STEP_INSTRUCTIONS = [
+  'Copy the configured master digital test sheet into Internal data\\Digital Test Sheets.',
+  'Create one test sheet for inLux, or one test sheet for each selected laser and grating combination for Virsa and inVia.'
+];
 export const LASER_GRATING_FILES_STEP_NAME = 'Create Extra Data Files';
 export const PAT_TEST_STEP_NAME = 'PAT Test';
 export const PRE_SYSTEM_TEST_STEP_NAME = 'Pre System Test';

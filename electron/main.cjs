@@ -1,8 +1,10 @@
 const { app, BrowserWindow, ipcMain, dialog, net, Tray, Menu, nativeImage, powerSaveBlocker } = require('electron');
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { promisify } = require('util');
 const pcCleanup = require('./pcCleanup.cjs');
+const execFileAsync = promisify(execFile);
 
 // Send the signed-in Windows user's credentials (NTLM/Kerberos) to spd-apps automatically.
 // Both spellings are set because Chromium renamed this switch across versions.
@@ -21,6 +23,79 @@ let tray = null;
 let keepAwakeEnabled = false;
 let keepAwakeInterval = null;
 let powerSaveBlockerId = null;
+
+function getSettingsConfigPath() {
+  return path.join(app.getPath('appData'), 'DigitalTraveller', 'config.json');
+}
+
+function readSettingsConfig() {
+  const configPath = getSettingsConfigPath();
+  if (!fs.existsSync(configPath)) return {};
+
+  const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('The config.json root must be an object.');
+  }
+  if (parsed.settings === undefined) return {};
+  if (!parsed.settings || typeof parsed.settings !== 'object' || Array.isArray(parsed.settings)) {
+    throw new Error('The config.json settings value must be an object.');
+  }
+
+  return Object.fromEntries(
+    Object.entries(parsed.settings).filter(([, value]) => typeof value === 'string')
+  );
+}
+
+ipcMain.on('load-settings-config', (event) => {
+  try {
+    event.returnValue = { success: true, settings: readSettingsConfig() };
+  } catch (error) {
+    console.error('Failed to read config.json:', error);
+    event.returnValue = {
+      success: false,
+      error: `Could not read config.json: ${error.message}`
+    };
+  }
+});
+
+ipcMain.on('save-settings-config', (event, settings) => {
+  let temporaryPath = '';
+  try {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+      throw new Error('Settings must be an object.');
+    }
+    const entries = Object.entries(settings);
+    if (entries.length > 200 || entries.some(([key, value]) =>
+      typeof key !== 'string' || typeof value !== 'string'
+    )) {
+      throw new Error('Settings must contain no more than 200 string key/value pairs.');
+    }
+
+    const configPath = getSettingsConfigPath();
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    temporaryPath = `${configPath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
+    fs.writeFileSync(
+      temporaryPath,
+      `${JSON.stringify({ version: 1, settings: Object.fromEntries(entries) }, null, 2)}\n`,
+      'utf8'
+    );
+    fs.renameSync(temporaryPath, configPath);
+    event.returnValue = { success: true };
+  } catch (error) {
+    if (temporaryPath) {
+      try {
+        fs.rmSync(temporaryPath, { force: true });
+      } catch (cleanupError) {
+        console.error('Failed to remove temporary config file:', cleanupError);
+      }
+    }
+    console.error('Failed to write config.json:', error);
+    event.returnValue = {
+      success: false,
+      error: `Could not save config.json: ${error.message}`
+    };
+  }
+});
 
 // Helper to reliably load the application icon with embedded fallback
 function getAppIcon() {
@@ -298,6 +373,225 @@ ipcMain.handle('create-system-folders', async (event, request) => {
   } catch (err) {
     console.error('Failed to create system folders:', err);
     return { success: false, error: `Could not create system folders: ${err.message}` };
+  }
+});
+
+ipcMain.handle('create-test-sheets', async (event, request) => {
+  try {
+    const systemDirectory = getSystemDirectory(request);
+    const system = typeof request?.system === 'string'
+      ? request.system.trim().toLowerCase()
+      : '';
+    const supportedSystems = new Set(['invia', 'virsa', 'inlux']);
+    if (!supportedSystems.has(system)) {
+      return { success: false, error: 'Test sheet copying is only configured for inVia, Virsa, and inLux.' };
+    }
+
+    const masterTemplatePath = typeof request?.masterTemplatePath === 'string'
+      ? request.masterTemplatePath.trim()
+      : '';
+    if (!masterTemplatePath || !path.isAbsolute(masterTemplatePath)) {
+      return { success: false, error: 'Configure an absolute master test sheet path in Settings.' };
+    }
+    const sourceStats = await fs.promises.stat(masterTemplatePath);
+    if (!sourceStats.isFile()) {
+      return { success: false, error: 'The configured master test sheet is not a file.' };
+    }
+
+    const masterRecordTemplatesFolder =
+      typeof request?.masterRecordTemplatesFolder === 'string'
+        ? request.masterRecordTemplatesFolder.trim()
+        : '';
+    if (!masterRecordTemplatesFolder || !path.isAbsolute(masterRecordTemplatesFolder)) {
+      return {
+        success: false,
+        error: `Configure the ${request.system} Master Test Acceptance & Minor Deviation Records folder in Settings.`
+      };
+    }
+    const recordFolderStats = await fs.promises.stat(masterRecordTemplatesFolder);
+    if (!recordFolderStats.isDirectory()) {
+      return { success: false, error: 'The configured master test records location is not a folder.' };
+    }
+    const systemRecordPrefix = system === 'inlux' ? 'inLux' : system === 'invia' ? 'InVia' : 'VIRSA';
+    const recordSourceCandidates = [
+      ['Test Acceptance Record.xlsm', `${systemRecordPrefix} Test Acceptance Record.xlsm`],
+      ['Minor Deviation Record.xlsm', `${systemRecordPrefix} Minor Deviation Record.xlsm`]
+    ];
+    const masterRecordPaths = [];
+    for (const candidates of recordSourceCandidates) {
+      let masterRecordPath = '';
+      for (const fileName of candidates) {
+        const candidatePath = path.join(masterRecordTemplatesFolder, fileName);
+        try {
+          const recordStats = await fs.promises.stat(candidatePath);
+          if (recordStats.isFile()) {
+            masterRecordPath = candidatePath;
+            break;
+          }
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+        }
+      }
+      if (!masterRecordPath) {
+        return {
+          success: false,
+          error: `The configured master test records folder is missing ${candidates.join(' or ')}.`
+        };
+      }
+      masterRecordPaths.push(masterRecordPath);
+    }
+
+    const targetDirectory = path.join(systemDirectory, 'Internal data', 'Digital Test Sheets');
+    let targetStats;
+    try {
+      targetStats = await fs.promises.stat(targetDirectory);
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        return {
+          success: false,
+          error: 'The Digital Test Sheets folder does not exist. Complete Create System Folders first.'
+        };
+      }
+      throw err;
+    }
+    if (!targetStats.isDirectory()) {
+      return { success: false, error: 'The Digital Test Sheets destination is not a folder.' };
+    }
+
+    const serialNumber = request.serialNumber.trim();
+    const testSheetMetadata = request.testSheetMetadata || {};
+    const requiredTestSheetValues = system === 'inlux'
+      ? [
+          ['customer number', testSheetMetadata.customerNumber],
+          ['job number', testSheetMetadata.jobNumber],
+          ['serial number', testSheetMetadata.serialNumber],
+          ['power meter serial number', testSheetMetadata.powerMeterSerialNumber],
+          ['power meter head serial number', testSheetMetadata.powerMeterHeadSerialNumber]
+        ]
+      : system === 'virsa'
+      ? [
+          ['job number', testSheetMetadata.jobNumber],
+          ['customer name', testSheetMetadata.customerName],
+          ['system number', testSheetMetadata.systemNumber],
+          ['serial number', testSheetMetadata.serialNumber],
+          ['power meter serial number', testSheetMetadata.powerMeterSerialNumber],
+          ['power meter head serial number', testSheetMetadata.powerMeterHeadSerialNumber]
+        ]
+      : [];
+    if (requiredTestSheetValues.length > 0) {
+      const missingValue = requiredTestSheetValues.find(
+        ([, value]) => typeof value !== 'string' || !value.trim()
+      );
+      if (missingValue) {
+        return {
+          success: false,
+          error: `Enter the ${system === 'inlux' ? 'inLux' : 'Virsa'} ${missingValue[0]} before creating test sheets.`
+        };
+      }
+    }
+
+    const targetNames = [];
+    if (system === 'inlux') {
+      targetNames.push(`${serialNumber}_inLux Test Sheet PT-70151.xlsm`);
+    } else {
+      if (!Array.isArray(request?.combinations) || request.combinations.length === 0) {
+        return { success: false, error: 'Add at least one laser and grating combination first.' };
+      }
+      const masterFileName = path.basename(masterTemplatePath);
+      for (const combination of request.combinations) {
+        const wavelength = Number(combination?.wavelengthNm);
+        const gratingDensity = Number(combination?.gratingDensityLinesPerMm);
+        if (
+          !Number.isFinite(wavelength) ||
+          wavelength <= 0 ||
+          !Number.isInteger(gratingDensity) ||
+          gratingDensity <= 0
+        ) {
+          return {
+            success: false,
+            error: 'Each row must have a positive wavelength and a positive whole-number grating density.'
+          };
+        }
+        targetNames.push(
+          `${serialNumber}_${wavelength}nm_${gratingDensity}_${masterFileName}`
+        );
+      }
+    }
+
+    const testSheetTargetPaths = [...new Set(targetNames)].map(
+      (name) => path.join(targetDirectory, name)
+    );
+    const recordTargetPaths = [
+      path.join(systemDirectory, 'Test Acceptance Record.xlsm'),
+      path.join(systemDirectory, 'Minor Deviation Record.xlsm')
+    ];
+    const targetPaths = [...testSheetTargetPaths, ...recordTargetPaths];
+    const masterPaths = [masterTemplatePath, ...masterRecordPaths]
+      .map((masterPath) => path.resolve(masterPath).toLowerCase());
+    if (targetPaths.some((targetPath) =>
+      masterPaths.includes(path.resolve(targetPath).toLowerCase())
+    )) {
+      return {
+        success: false,
+        error: 'A configured master test workbook cannot also be used as a destination file.'
+      };
+    }
+
+    const conflicts = [];
+    for (const targetPath of targetPaths) {
+      try {
+        await fs.promises.access(targetPath, fs.constants.F_OK);
+        conflicts.push(targetPath);
+      } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+      }
+    }
+    if (conflicts.length > 0 && request.overwrite !== true) {
+      return { success: false, conflicts };
+    }
+
+    for (const targetPath of conflicts) {
+      await fs.promises.chmod(targetPath, 0o666);
+    }
+
+    const files = [];
+    for (const targetPath of targetPaths) {
+      const sheetIndex = testSheetTargetPaths.indexOf(targetPath);
+      const recordIndex = recordTargetPaths.indexOf(targetPath);
+      const sourcePath = sheetIndex >= 0
+        ? masterTemplatePath
+        : masterRecordPaths[recordIndex];
+      await fs.promises.copyFile(
+        sourcePath,
+        targetPath,
+        request.overwrite === true ? 0 : fs.constants.COPYFILE_EXCL
+      );
+      await fs.promises.chmod(targetPath, 0o666);
+      if (sheetIndex >= 0 && (system === 'virsa' || system === 'inlux')) {
+        await execFileAsync('powershell.exe', [
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          path.join(__dirname, 'populateDigitalTestSheet.ps1'),
+          system === 'inlux' ? 'inLux' : 'Virsa',
+          targetPath,
+          (testSheetMetadata.jobNumber || '').trim(),
+          (testSheetMetadata.customerName || '').trim(),
+          (testSheetMetadata.systemNumber || '').trim(),
+          (testSheetMetadata.serialNumber || '').trim(),
+          (testSheetMetadata.powerMeterSerialNumber || '').trim(),
+          (testSheetMetadata.powerMeterHeadSerialNumber || '').trim(),
+          (testSheetMetadata.customerNumber || '').trim()
+        ]);
+      }
+      files.push(targetPath);
+    }
+    return { success: true, files };
+  } catch (err) {
+    console.error('Failed to create test sheets:', err);
+    return { success: false, error: `Could not create test sheets: ${err.message}` };
   }
 });
 

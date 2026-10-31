@@ -17,6 +17,31 @@ contextBridge.exposeInMainWorld('desktopAPI', {
       customerName,
       saveLocation
     }),
+  createTestSheets: (
+    system,
+    serialNumber,
+    partNumber,
+    customerName,
+    saveLocation,
+    masterTemplatePath,
+    masterRecordTemplatesFolder,
+    combinations,
+    overwrite,
+    testSheetMetadata
+  ) => ipcRenderer.invoke('create-test-sheets', {
+    system,
+    serialNumber,
+    partNumber,
+    customerName,
+    saveLocation,
+    masterTemplatePath,
+    masterRecordTemplatesFolder,
+    combinations,
+    overwrite,
+    testSheetMetadata
+  }),
+  loadSettingsConfig: () => ipcRenderer.sendSync('load-settings-config'),
+  saveSettingsConfig: (settings) => ipcRenderer.sendSync('save-settings-config', settings),
   createLaserGratingFiles: (
     serialNumber,
     partNumber,

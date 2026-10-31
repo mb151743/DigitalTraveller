@@ -1,7 +1,9 @@
 import {
   LaserGratingCombination,
   LaserGratingFileResult,
-  SystemFolderResult
+  SystemFolderResult,
+  TestSheetResult,
+  DigitalTestSheetMetadata
 } from './traveller';
 
 export interface CleanupFolder {
@@ -50,6 +52,24 @@ declare global {
         customerName: string,
         saveLocation: string
       ) => Promise<SystemFolderResult>;
+      createTestSheets: (
+        system: string,
+        serialNumber: string,
+        partNumber: string,
+        customerName: string,
+        saveLocation: string,
+        masterTemplatePath: string,
+        masterRecordTemplatesFolder: string,
+        combinations: LaserGratingCombination[],
+        overwrite: boolean,
+        testSheetMetadata?: DigitalTestSheetMetadata
+      ) => Promise<TestSheetResult>;
+      loadSettingsConfig: () =>
+        | { success: true; settings: Record<string, string> }
+        | { success: false; error: string };
+      saveSettingsConfig: (settings: Record<string, string>) =>
+        | { success: true }
+        | { success: false; error: string };
       selectNetworkDirectory: () => Promise<string | null>;
       searchCleanupFolders: () => Promise<CleanupResult<CleanupFolder[]>>;
       searchArchiveSystemResults: () => Promise<CleanupResult<CleanupFolder[]>>;

@@ -5,6 +5,7 @@ import {
   LASER_GRATING_FILES_SAVE_INSTRUCTION,
   LASER_GRATING_FILES_STEP_NAME,
   LASER_GRATING_SELECTION_STEP_NAME,
+  CREATE_TEST_SHEETS_STEP_NAME,
   PAT_TEST_STEP_NAME,
   PRE_SYSTEM_TEST_STEP_NAME,
   RECORD_SYSTEM_DETAILS_STEP_INSTRUCTIONS,
@@ -24,6 +25,20 @@ const STORAGE_KEY_ACTIVE_SYSTEM = 'digital_traveller_active_system';
 const STORAGE_KEY_SYSTEM_PREFIX = 'digital_traveller_system_';
 const STORAGE_KEY_TECHS = 'digital_traveller_technicians';
 const STORAGE_KEY_SAVE_LOCATION = 'digital_traveller_save_location';
+
+function placeTestSheetsStepAfterSelection(steps: WorkflowStep[]): WorkflowStep[] {
+  const testSheetsIndex = steps.findIndex((step) => step.name === CREATE_TEST_SHEETS_STEP_NAME);
+  const selectionIndex = steps.findIndex((step) => step.name === LASER_GRATING_SELECTION_STEP_NAME);
+  if (testSheetsIndex < 0 || selectionIndex < 0) return steps;
+
+  const orderedSteps = [...steps];
+  const [testSheetsStep] = orderedSteps.splice(testSheetsIndex, 1);
+  const updatedSelectionIndex = orderedSteps.findIndex(
+    (step) => step.name === LASER_GRATING_SELECTION_STEP_NAME
+  );
+  orderedSteps.splice(updatedSelectionIndex + 1, 0, testSheetsStep);
+  return orderedSteps;
+}
 
 export const DEFAULT_TECHNICIANS = [
   'P. Street',
@@ -453,9 +468,10 @@ export class StorageService {
         }
       }
 
-      const setUpOthers = otherSteps.filter((s) => s.stage === 'Set Up');
-      const calibOthers = otherSteps.filter((s) => s.stage === 'Calibration');
-      const restOthers = otherSteps.filter((s) => s.stage !== 'Set Up' && s.stage !== 'Calibration');
+      const orderedOtherSteps = placeTestSheetsStepAfterSelection(otherSteps);
+      const setUpOthers = orderedOtherSteps.filter((s) => s.stage === 'Set Up');
+      const calibOthers = orderedOtherSteps.filter((s) => s.stage === 'Calibration');
+      const restOthers = orderedOtherSteps.filter((s) => s.stage !== 'Set Up' && s.stage !== 'Calibration');
 
       const finalSteps: WorkflowStep[] = [
         patStep,
@@ -565,11 +581,33 @@ export class StorageService {
           }
         : step);
 
+    const testSheetsTemplateStep = template.steps.find(
+      (step) => step.name === CREATE_TEST_SHEETS_STEP_NAME
+    );
+    if (
+      ['inVia', 'Virsa', 'inLux'].includes(record.system) &&
+      testSheetsTemplateStep &&
+      !otherSteps.some((step) => step.name === CREATE_TEST_SHEETS_STEP_NAME)
+    ) {
+      otherSteps.push({
+        ...testSheetsTemplateStep,
+        id: `step-${record.system}-create-test-sheets-${Date.now().toString(36)}`,
+        status: 'Not Started',
+        completedAt: null,
+        startedAt: null,
+        technician: '',
+        notes: '',
+        checklist: testSheetsTemplateStep.checklist?.map((item) => ({ ...item })) || [],
+        measuredData: testSheetsTemplateStep.measuredData?.map((item) => ({ ...item })) || []
+      });
+    }
+
+    const orderedOtherSteps = placeTestSheetsStepAfterSelection(otherSteps);
     return {
       ...record,
       stages: normalizedStages,
       activeStage,
-      steps: [unboxingStep, detailsStep, systemFolderStep, ...otherSteps],
+      steps: [unboxingStep, detailsStep, systemFolderStep, ...orderedOtherSteps],
       laserGratingCombinations: Array.isArray(record.laserGratingCombinations)
         ? record.laserGratingCombinations.map((combination) => ({
             wavelengthNm:

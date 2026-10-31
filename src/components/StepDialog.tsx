@@ -3,6 +3,8 @@ import {
   LaserGratingCombination,
   LaserGratingFileResult,
   SystemFolderResult,
+  TestSheetResult,
+  DigitalTestSheetMetadata,
   WorkflowStep,
   StepStatus
 } from '../types/traveller';
@@ -12,13 +14,63 @@ import {
   LASER_GRATING_SELECTION_STEP_NAME,
   RECORD_SYSTEM_DETAILS_STEP_NAME,
   SYSTEM_FOLDERS_STEP_NAME,
+  CREATE_TEST_SHEETS_STEP_NAME,
   validateLaserGratingCombinations
 } from '../services/laserGratingWorkflow';
 import { LaserGratingStepPanel } from './LaserGratingStepPanel';
+import { DigitalTestSheetSettings } from '../services/digitalTestSheetSettingsService';
 import { 
   X, CheckCircle, Clock, RotateCcw, AlertTriangle, FileText, 
   CheckSquare, Square, Check, UserCheck, User, KeyRound, Briefcase, Tag, Hash 
 } from 'lucide-react';
+
+function normalizeTestSheetMetadata(
+  metadata: DigitalTestSheetMetadata
+): DigitalTestSheetMetadata {
+  return {
+    jobNumber: metadata.jobNumber.trim(),
+    customerName: metadata.customerName.trim(),
+    systemNumber: metadata.systemNumber.trim(),
+    serialNumber: metadata.serialNumber.trim(),
+    customerNumber: metadata.customerNumber.trim(),
+    powerMeterSerialNumber: metadata.powerMeterSerialNumber.trim(),
+    powerMeterHeadSerialNumber: metadata.powerMeterHeadSerialNumber.trim()
+  };
+}
+
+const INLUX_TEST_SHEET_FIELDS: Array<[keyof DigitalTestSheetMetadata, string]> = [
+  ['customerNumber', 'Customer Number (C2)'],
+  ['jobNumber', 'Job Number (C3)'],
+  ['serialNumber', 'Serial Number (F3)'],
+  ['powerMeterSerialNumber', 'Power Meter S/N (E10)'],
+  ['powerMeterHeadSerialNumber', 'Power Meter Head S/N (G10)']
+];
+
+const VIRSA_TEST_SHEET_FIELDS: Array<[keyof DigitalTestSheetMetadata, string]> = [
+  ['jobNumber', 'Job Number (C2)'],
+  ['customerName', 'Customer Name (E2)'],
+  ['systemNumber', 'System Number (G2)'],
+  ['serialNumber', 'Serial Number (I2)'],
+  ['powerMeterSerialNumber', 'Power Meter S/N (C5)'],
+  ['powerMeterHeadSerialNumber', 'Power Meter Head S/N (E5)']
+];
+
+const INLUX_REQUIRED_TEST_SHEET_FIELDS: Array<keyof DigitalTestSheetMetadata> = [
+  'customerNumber',
+  'jobNumber',
+  'serialNumber',
+  'powerMeterSerialNumber',
+  'powerMeterHeadSerialNumber'
+];
+
+const VIRSA_REQUIRED_TEST_SHEET_FIELDS: Array<keyof DigitalTestSheetMetadata> = [
+  'jobNumber',
+  'customerName',
+  'systemNumber',
+  'serialNumber',
+  'powerMeterSerialNumber',
+  'powerMeterHeadSerialNumber'
+];
 
 interface StepDialogProps {
   step: WorkflowStep | null;
@@ -46,9 +98,21 @@ interface StepDialogProps {
   onUpdateLaserGratingCombinations: (combinations: LaserGratingCombination[]) => void;
   onCreateLaserGratingFiles: (overwrite: boolean) => Promise<LaserGratingFileResult>;
   onCreateSystemFolders: () => Promise<SystemFolderResult>;
+  system: string;
+  onCreateTestSheets: (
+    overwrite: boolean,
+    testSheetMetadata?: DigitalTestSheetMetadata
+  ) => Promise<TestSheetResult>;
+  digitalTestSheetSettings: DigitalTestSheetSettings;
+  onSaveDigitalTestSheetSettings: (settings: DigitalTestSheetSettings) => void;
 }
 
-export const StepDialog: React.FC<StepDialogProps> = ({
+export const StepDialog: React.FC<StepDialogProps> = (props) => {
+  if (!props.isOpen || !props.step) return null;
+  return <StepDialogContent {...props} step={props.step} />;
+};
+
+const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   step,
   operatorName,
   theme,
@@ -68,13 +132,26 @@ export const StepDialog: React.FC<StepDialogProps> = ({
   laserGratingCombinations,
   onUpdateLaserGratingCombinations,
   onCreateLaserGratingFiles,
-  onCreateSystemFolders
+  onCreateSystemFolders,
+  system,
+  onCreateTestSheets,
+  digitalTestSheetSettings,
+  onSaveDigitalTestSheetSettings
 }) => {
-  if (!isOpen || !step) return null;
-
   const [notes, setNotes] = useState(step.notes || '');
   const [completionError, setCompletionError] = useState<string | null>(null);
   const [isCreatingSystemFolders, setIsCreatingSystemFolders] = useState(false);
+  const [isCreatingTestSheets, setIsCreatingTestSheets] = useState(false);
+  const [isTestSheetDataPromptOpen, setIsTestSheetDataPromptOpen] = useState(false);
+  const [testSheetMetadata, setTestSheetMetadata] = useState<DigitalTestSheetMetadata>({
+    jobNumber,
+    customerName,
+    systemNumber: '',
+    serialNumber,
+    customerNumber: '',
+    powerMeterSerialNumber: digitalTestSheetSettings.powerMeterSerialNumber,
+    powerMeterHeadSerialNumber: digitalTestSheetSettings.powerMeterHeadSerialNumber
+  });
   const [signoffTechnician, setSignoffTechnician] = useState(
     step.technician || operatorName || 'M. Brown'
   );
@@ -82,6 +159,7 @@ export const StepDialog: React.FC<StepDialogProps> = ({
   const isLaserFilesStep = step.name === LASER_GRATING_FILES_STEP_NAME;
   const isRecordSystemDetailsStep = step.name === RECORD_SYSTEM_DETAILS_STEP_NAME;
   const isSystemFoldersStep = step.name === SYSTEM_FOLDERS_STEP_NAME;
+  const isCreateTestSheetsStep = step.name === CREATE_TEST_SHEETS_STEP_NAME;
 
   // Local state for inline system details inputs on the Setup procedure page
   const [localSerial, setLocalSerial] = useState(serialNumber || '');
@@ -102,6 +180,25 @@ export const StepDialog: React.FC<StepDialogProps> = ({
     setLocalJob(jobNumber || '');
     setLocalPart(partNumber || '');
   }, [serialNumber, customerName, jobNumber, partNumber, isOpen]);
+
+  useEffect(() => {
+    setTestSheetMetadata({
+      jobNumber: jobNumber || '',
+      customerName: customerName || '',
+      systemNumber: '',
+      serialNumber: serialNumber || '',
+      customerNumber: '',
+      powerMeterSerialNumber: digitalTestSheetSettings.powerMeterSerialNumber || '',
+      powerMeterHeadSerialNumber: digitalTestSheetSettings.powerMeterHeadSerialNumber || ''
+    });
+  }, [
+    jobNumber,
+    customerName,
+    serialNumber,
+    digitalTestSheetSettings.powerMeterSerialNumber,
+    digitalTestSheetSettings.powerMeterHeadSerialNumber,
+    isOpen
+  ]);
 
   const syncDetailsIfChanged = () => {
     if (!isRecordSystemDetailsStep) return;
@@ -137,6 +234,10 @@ export const StepDialog: React.FC<StepDialogProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
+        if (isTestSheetDataPromptOpen) {
+          setIsTestSheetDataPromptOpen(false);
+          return;
+        }
         handleCloseWithoutCompleting();
       }
     };
@@ -144,7 +245,90 @@ export const StepDialog: React.FC<StepDialogProps> = ({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [notes, step, signoffTechnician, localSerial, localCustomer, localJob, localPart]);
+  }, [
+    notes,
+    step,
+    signoffTechnician,
+    localSerial,
+    localCustomer,
+    localJob,
+    localPart,
+    isTestSheetDataPromptOpen
+  ]);
+
+  const createTestSheetsAndComplete = async (
+    metadata?: DigitalTestSheetMetadata
+  ): Promise<boolean> => {
+    setIsCreatingTestSheets(true);
+    try {
+      let result = await onCreateTestSheets(false, metadata);
+      if (!result.success && 'conflicts' in result) {
+        const conflicts = result.conflicts.map((file) => `• ${file}`).join('\n');
+        const shouldOverwrite = window.confirm(
+          `These test sheets already exist:\n\n${conflicts}\n\nReplace the existing files?`
+        );
+        if (!shouldOverwrite) {
+          setCompletionError('Test sheet creation cancelled. Existing files were not changed.');
+          return false;
+        }
+        result = await onCreateTestSheets(true, metadata);
+      }
+      if (!result.success) {
+        setCompletionError(result.error);
+        return false;
+      }
+      setCompletionError(null);
+      setIsTestSheetDataPromptOpen(false);
+      onUpdateStatus(step.id, 'Complete', notes, signoffTechnician);
+      onClose();
+      return true;
+    } catch (error) {
+      setCompletionError(
+        error instanceof Error ? error.message : 'Could not create test sheets.'
+      );
+      return false;
+    } finally {
+      setIsCreatingTestSheets(false);
+    }
+  };
+
+  const handleSubmitTestSheetMetadata = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const metadata = normalizeTestSheetMetadata(testSheetMetadata);
+    const requiredFields = system === 'inLux'
+      ? INLUX_REQUIRED_TEST_SHEET_FIELDS
+      : VIRSA_REQUIRED_TEST_SHEET_FIELDS;
+    const missingField = requiredFields
+      .map((field) => [field, metadata[field]] as const)
+      .find(([, value]) => !value);
+    if (missingField) {
+      setCompletionError(`Enter the ${missingField[0].replace(/([A-Z])/g, ' $1').toLowerCase()}.`);
+      return;
+    }
+
+    try {
+      onSaveDigitalTestSheetSettings({
+        powerMeterSerialNumber: metadata.powerMeterSerialNumber,
+        powerMeterHeadSerialNumber: metadata.powerMeterHeadSerialNumber
+      });
+    } catch (error) {
+      setCompletionError(
+        error instanceof Error ? error.message : 'Could not save power meter serial numbers.'
+      );
+      return;
+    }
+
+    setTestSheetMetadata(metadata);
+    await createTestSheetsAndComplete(metadata);
+  };
+
+  const handleTestSheetMetadataChange = (
+    field: keyof DigitalTestSheetMetadata,
+    value: string
+  ) => {
+    setTestSheetMetadata((current) => ({ ...current, [field]: value }));
+    setCompletionError(null);
+  };
 
   const handleMarkComplete = async () => {
     if (isRecordSystemDetailsStep) {
@@ -162,6 +346,34 @@ export const StepDialog: React.FC<StepDialogProps> = ({
         setCompletionError(validationError);
         return;
       }
+    }
+    if (isCreateTestSheetsStep) {
+      if (system === 'Virsa' || system === 'inLux') {
+        const metadata = normalizeTestSheetMetadata(testSheetMetadata);
+        const requiredFields = system === 'inLux'
+          ? INLUX_REQUIRED_TEST_SHEET_FIELDS
+          : VIRSA_REQUIRED_TEST_SHEET_FIELDS;
+        if (requiredFields.some((field) => !metadata[field])) {
+          setCompletionError(null);
+          setIsTestSheetDataPromptOpen(true);
+          return;
+        }
+        await createTestSheetsAndComplete(metadata);
+        return;
+      }
+      if (!serialNumber.trim()) {
+        setCompletionError('Enter the traveller serial number before creating test sheets.');
+        return;
+      }
+      if (system !== 'inLux') {
+        const validationError = validateLaserGratingCombinations(laserGratingCombinations);
+        if (validationError) {
+          setCompletionError(validationError);
+          return;
+        }
+      }
+      await createTestSheetsAndComplete();
+      return;
     }
     if (isSystemFoldersStep) {
       setIsCreatingSystemFolders(true);
@@ -209,6 +421,10 @@ export const StepDialog: React.FC<StepDialogProps> = ({
     }
     onClose();
   };
+
+  const testSheetFields = system === 'inLux'
+    ? INLUX_TEST_SHEET_FIELDS
+    : VIRSA_TEST_SHEET_FIELDS;
 
   return (
     <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150 ${theme === 'light' ? 'step-dialog-light' : ''}`}>
@@ -306,6 +522,14 @@ export const StepDialog: React.FC<StepDialogProps> = ({
             <div className="rounded-lg border border-blue-800/70 bg-blue-950/30 p-3 text-xs text-slate-300">
               Completing this step creates the system folder and its standard Customer data and
               Internal data subfolders in the configured Save location.
+            </div>
+          )}
+
+          {isCreateTestSheetsStep && (
+            <div className="rounded-lg border border-blue-800/70 bg-blue-950/30 p-3 text-xs text-slate-300">
+              Completing this step copies the read-only master sheet configured in Settings into
+              the system folder under Internal data\Digital Test Sheets. inLux creates one sheet;
+              Virsa and inVia create one for each selected laser and grating combination.
             </div>
           )}
 
@@ -541,15 +765,19 @@ export const StepDialog: React.FC<StepDialogProps> = ({
               <button
                 type="button"
                 onClick={handleMarkComplete}
-                disabled={isCreatingSystemFolders}
+                disabled={isCreatingSystemFolders || isCreatingTestSheets}
                 className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/30 flex items-center space-x-1.5 transition-all"
               >
                 <CheckCircle className="w-3.5 h-3.5" />
                   <span>
-                    {isCreatingSystemFolders
+                    {isCreatingTestSheets
+                      ? 'Creating test sheets…'
+                      : isCreatingSystemFolders
                       ? 'Creating folders…'
                       : isSystemFoldersStep
                       ? 'Create Folders & Mark Complete'
+                      : isCreateTestSheetsStep
+                      ? 'Create Test Sheets & Mark Complete'
                       : 'Mark Complete'}
                   </span>
               </button>
@@ -557,6 +785,72 @@ export const StepDialog: React.FC<StepDialogProps> = ({
           </div>
         </div>
       </div>
+      {isTestSheetDataPromptOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4">
+          <form
+            onSubmit={handleSubmitTestSheetMetadata}
+            className="w-full max-w-xl rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="test-sheet-data-title"
+          >
+            <h3
+              id="test-sheet-data-title"
+              className="text-sm font-semibold text-slate-100"
+            >
+              {system} Test Sheet Information
+            </h3>
+            <p className="mt-1 text-xs text-slate-400">
+              Enter the missing details. Power meter serial numbers will be saved in Settings for future sheets.
+            </p>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {testSheetFields.map(([field, label]) => (
+                <label key={field} className="space-y-1 text-[11px] text-slate-300">
+                  <span>{label}</span>
+                  <input
+                    autoComplete="off"
+                    autoFocus={
+                      (field === 'systemNumber' || field === 'customerNumber') &&
+                      !testSheetMetadata[field]
+                    }
+                    type="text"
+                    required
+                    value={testSheetMetadata[field]}
+                    onChange={(event) => handleTestSheetMetadataChange(field, event.target.value)}
+                    className="w-full rounded border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </label>
+              ))}
+            </div>
+            {completionError && (
+              <p role="alert" className="mt-3 flex items-center gap-2 text-xs text-amber-300">
+                <AlertTriangle className="h-4 w-4" />
+                {completionError}
+              </p>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsTestSheetDataPromptOpen(false);
+                  setCompletionError(null);
+                }}
+                disabled={isCreatingTestSheets}
+                className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isCreatingTestSheets}
+                className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {isCreatingTestSheets ? 'Creating test sheets…' : 'Save and Create Sheets'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

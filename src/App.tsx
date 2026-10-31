@@ -7,7 +7,9 @@ import {
   SystemType,
   WorkflowStage,
   StepStatus,
-  SystemFolderResult
+  SystemFolderResult,
+  TestSheetResult,
+  DigitalTestSheetMetadata
 } from './types/traveller';
 import { StorageService } from './services/storageService';
 import { WorkflowService } from './services/workflowService';
@@ -22,6 +24,9 @@ import { ConfirmModal } from './components/ConfirmModal';
 import { NewTravellerModal } from './components/NewTravellerModal';
 import { AdminSettingsModal } from './components/AdminSettingsModal';
 import { WorkflowTemplateService } from './services/workflowTemplateService';
+import { NetworkShareConfigService } from './services/networkShareConfigService';
+import { DigitalTestSheetSettingsService } from './services/digitalTestSheetSettingsService';
+import { getConfigJsonInitializationError } from './services/configJsonStorage';
 import { WireKeyModal } from './components/WireKeyModal';
 import { PcCleanupPanel } from './components/PcCleanupPanel';
 import {
@@ -30,7 +35,10 @@ import {
   SYSTEM_UNBOXING_STEP_INSTRUCTIONS,
   SYSTEM_UNBOXING_STEP_NAME,
   SYSTEM_FOLDERS_STEP_NAME,
-  SYSTEM_FOLDERS_STEP_INSTRUCTIONS
+  SYSTEM_FOLDERS_STEP_INSTRUCTIONS,
+  CREATE_TEST_SHEETS_STEP_NAME,
+  CREATE_TEST_SHEETS_STEP_INSTRUCTIONS,
+  LASER_GRATING_SELECTION_STEP_NAME
 } from './services/laserGratingWorkflow';
 
 export const App: React.FC = () => {
@@ -59,7 +67,10 @@ export const App: React.FC = () => {
   const [isWireKeyModalOpen, setIsWireKeyModalOpen] = useState(false);
   const [isCleanupOpen, setIsCleanupOpen] = useState(false);
   const [wireKeySerial, setWireKeySerial] = useState('');
-  const [notification, setNotification] = useState<string | null>(null);
+  const [notification, setNotification] = useState<string | null>(() => {
+    const configError = getConfigJsonInitializationError();
+    return configError ? `Settings configuration error: ${configError}` : null;
+  });
 
   // Left pane resizeable width state (opens at 320px by default)
   const [leftPaneWidth, setLeftPaneWidth] = useState<number>(() => {
@@ -101,6 +112,20 @@ export const App: React.FC = () => {
     };
   }, [isResizingLeftPane]);
 
+  // New Traveller modal state
+  const [isNewTravellerConfirmOpen, setIsNewTravellerConfirmOpen] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleConfigError = (event: Event) => {
+      const { message } = (event as CustomEvent<{ message: string }>).detail;
+      setNotification(`Settings could not be saved to config.json: ${message}`);
+    };
+    window.addEventListener('digital-traveller-config-error', handleConfigError);
+    return () => window.removeEventListener('digital-traveller-config-error', handleConfigError);
+  }, []);
+
   // Persist left pane width
   useEffect(() => {
     try {
@@ -109,11 +134,6 @@ export const App: React.FC = () => {
       // ignore
     }
   }, [leftPaneWidth]);
-
-  // New Traveller modal state
-  const [isNewTravellerConfirmOpen, setIsNewTravellerConfirmOpen] = useState(false);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync state changes to storage
   useEffect(() => {
@@ -604,6 +624,39 @@ export const App: React.FC = () => {
       }))];
     }
 
+    if (['inVia', 'Virsa', 'inLux'].includes(traveller.system)) {
+      const selectionIndex = normalizedSteps.findIndex(
+        (step) => step.name === LASER_GRATING_SELECTION_STEP_NAME
+      );
+      if (selectionIndex >= 0) {
+        const existingIndex = normalizedSteps.findIndex(
+          (step) => step.name === CREATE_TEST_SHEETS_STEP_NAME
+        );
+        const testSheetsStep: WorkflowStep = existingIndex >= 0
+          ? {
+              ...normalizedSteps.splice(existingIndex, 1)[0],
+              stage: 'Calibration'
+            }
+          : {
+              id: `step-${traveller.system}-create-test-sheets-${Date.now().toString(36)}`,
+              name: CREATE_TEST_SHEETS_STEP_NAME,
+              stage: 'Calibration',
+              status: 'Not Started',
+              completedAt: null,
+              startedAt: null,
+              technician: '',
+              notes: '',
+              instructions: [...CREATE_TEST_SHEETS_STEP_INSTRUCTIONS],
+              checklist: [],
+              measuredData: []
+            };
+        const updatedSelectionIndex = normalizedSteps.findIndex(
+          (step) => step.name === LASER_GRATING_SELECTION_STEP_NAME
+        );
+        normalizedSteps.splice(updatedSelectionIndex + 1, 0, testSheetsStep);
+      }
+    }
+
     setTraveller((prev) => ({
       ...prev,
       stages: normalizedStages,
@@ -677,6 +730,58 @@ export const App: React.FC = () => {
     );
     if (result.success) {
       setNotification(`Created system folder structure in ${result.directory}`);
+    }
+    return result;
+  };
+
+  const handleCreateTestSheets = async (
+    overwrite: boolean,
+    testSheetMetadata?: DigitalTestSheetMetadata
+  ): Promise<TestSheetResult> => {
+    const createTestSheets = window.desktopAPI?.createTestSheets;
+    if (!createTestSheets) {
+      return {
+        success: false,
+        error: 'Creating test sheets is available in the Windows desktop app only.'
+      };
+    }
+
+    const masterSheet = NetworkShareConfigService
+      .getLocationsForSystem(traveller.system)
+      .find((location) => location.category === 'Master Sheet');
+    if (typeof masterSheet?.path !== 'string' || !masterSheet.path.trim()) {
+      return {
+        success: false,
+        error: `Configure the ${traveller.system} master test sheet path in Settings.`
+      };
+    }
+    const masterRecordsFolder = NetworkShareConfigService
+      .getLocationsForSystem(traveller.system)
+      .find((location) => location.category === 'Master Test Records');
+    if (typeof masterRecordsFolder?.path !== 'string' || !masterRecordsFolder.path.trim()) {
+      return {
+        success: false,
+        error: `Configure the ${traveller.system} Master Test Acceptance & Minor Deviation Records folder in Settings.`
+      };
+    }
+
+    const result = await createTestSheets(
+      traveller.system,
+      traveller.serialNumber,
+      traveller.partNumber || '',
+      traveller.customerName || '',
+      StorageService.getSaveLocation(),
+      masterSheet.path,
+      masterRecordsFolder.path,
+      traveller.laserGratingCombinations || [],
+      overwrite,
+      testSheetMetadata
+    );
+    if (result.success) {
+      const recordsFile = result.files[result.files.length - 2];
+      setNotification(
+        `Created test sheets and copied both master records to ${recordsFile?.replace(/[\\/][^\\/]*$/, '')}`
+      );
     }
     return result;
   };
@@ -817,6 +922,10 @@ export const App: React.FC = () => {
         onUpdateLaserGratingCombinations={handleUpdateLaserGratingCombinations}
         onCreateLaserGratingFiles={handleCreateLaserGratingFiles}
         onCreateSystemFolders={handleCreateSystemFolders}
+        system={traveller.system}
+        onCreateTestSheets={handleCreateTestSheets}
+        digitalTestSheetSettings={DigitalTestSheetSettingsService.get()}
+        onSaveDigitalTestSheetSettings={DigitalTestSheetSettingsService.save}
       />
 
       {/* Barcode & Unit Details Scanner Modal Dialog */}
