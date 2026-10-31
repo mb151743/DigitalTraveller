@@ -40,6 +40,29 @@ jobs:
       - name: Package Windows executable
         run: npx electron-builder --win portable --publish never
 
+      - name: Create DigitalTraveller ZIP
+        shell: pwsh
+        run: |
+          $executables = @(Get-ChildItem release -Filter *.exe -File)
+          if ($executables.Count -ne 1) {
+            Write-Error "Expected exactly one packaged executable, found $($executables.Count)."
+            exit 1
+          }
+
+          $executablePath = Join-Path $executables[0].DirectoryName "DigitalTraveller.exe"
+          if ($executables[0].FullName -ne $executablePath) {
+            Move-Item -LiteralPath $executables[0].FullName -Destination $executablePath
+          }
+
+          $zipPath = Join-Path (Resolve-Path release).Path "DigitalTraveller.zip"
+          Compress-Archive -LiteralPath $executablePath -DestinationPath $zipPath -CompressionLevel Optimal
+
+          $archiveContents = @(tar -tf $zipPath)
+          if ($LASTEXITCODE -ne 0 -or $archiveContents -notcontains "DigitalTraveller.exe") {
+            Write-Error "DigitalTraveller.zip does not contain DigitalTraveller.exe."
+            exit 1
+          }
+
       - name: Verify web app is packaged
         shell: pwsh
         run: |
@@ -54,7 +77,7 @@ jobs:
       - name: Upload Windows Executable Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: digital-traveller-windows-portable
-          path: release/*.exe
+          name: DigitalTraveller
+          path: release/DigitalTraveller.zip
           if-no-files-found: error
           retention-days: 30

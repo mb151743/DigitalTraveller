@@ -58,6 +58,7 @@ The **Create Test Sheets** step follows **Select Laser and Grating Combinations*
 
 - **inLux** creates one file named `<Serial Number>_inLux Test Sheet PT-70151.xlsm`.
 - **Virsa** and **inVia** create one copy per selected combination. Each file is named `<Serial Number>_<Wavelength>nm_<Grating>_<Master Sheet File Name>`.
+- For **inVia**, each copy is populated with Job Number (C3), Customer Name (E3), and Serial Number (H3).
 - For **Virsa**, each copy is populated with Job Number (C2), Customer Name (E2), Part Number (G2), Serial Number (I2), Power Meter Serial Number (C5), and Power Meter Head Serial Number (E5). Missing values are requested before copying. The power meter serial numbers are configurable and saved in Settings for reuse.
 - For **inLux**, the single copy is populated with Customer Name (C2), Job Number (C3), Serial Number (F3), Power Meter Serial Number (E10), and Power Meter Head Serial Number (G10). Missing values are requested before copying. Its meter serial numbers use the same saved Settings defaults.
 - The step also copies the configured system-specific `Test Acceptance Record.xlsm` and `Minor Deviation Record.xlsm` master files from the **Master Test Acceptance & Minor Deviation Records** folder in Settings into the root of the system folder. The source folder may use the generic filenames or system-prefixed filenames. These copies are not edited during this step.

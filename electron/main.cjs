@@ -715,7 +715,7 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
         request.overwrite === true ? 0 : fs.constants.COPYFILE_EXCL
       );
       await fs.promises.chmod(targetPath, 0o666);
-      if (sheetIndex >= 0 && (system === 'virsa' || system === 'inlux')) {
+      if (sheetIndex >= 0 && (system === 'invia' || system === 'virsa' || system === 'inlux')) {
         await execFileAsync('powershell.exe', [
           '-NoProfile',
           '-NonInteractive',
@@ -723,12 +723,12 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
           'Bypass',
           '-File',
           path.join(__dirname, 'populateDigitalTestSheet.ps1'),
-          system === 'inlux' ? 'inLux' : 'Virsa',
+          system === 'inlux' ? 'inLux' : system === 'invia' ? 'InVia' : 'Virsa',
           targetPath,
-          (testSheetMetadata.jobNumber || '').trim(),
-          (testSheetMetadata.customerName || '').trim(),
+          (testSheetMetadata.jobNumber || request.jobNumber || '').trim(),
+          (testSheetMetadata.customerName || request.customerName || '').trim(),
           (testSheetMetadata.partNumber || '').trim(),
-          (testSheetMetadata.serialNumber || '').trim(),
+          (testSheetMetadata.serialNumber || request.serialNumber || '').trim(),
           (testSheetMetadata.powerMeterSerialNumber || '').trim(),
           (testSheetMetadata.powerMeterHeadSerialNumber || '').trim()
         ]);

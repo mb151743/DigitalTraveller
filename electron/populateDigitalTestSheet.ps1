@@ -1,5 +1,5 @@
 param(
-  [Parameter(Mandatory = $true)][ValidateSet('Virsa', 'inLux')][string]$System,
+  [Parameter(Mandatory = $true)][ValidateSet('Virsa', 'inLux', 'InVia')][string]$System,
   [Parameter(Mandatory = $true)][string]$WorkbookPath,
   [Parameter(Mandatory = $true)][AllowEmptyString()][string]$JobNumber,
   [Parameter(Mandatory = $true)][AllowEmptyString()][string]$CustomerName,
@@ -69,13 +69,21 @@ try {
     'rel',
     'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
   )
-  $worksheetName = if ($System -eq 'inLux') { 'inLux Test Sheet' } else { 'Virsa Test Sheet' }
-  $sheet = $workbook.SelectSingleNode(
-    "//main:sheet[@name='$worksheetName']",
-    $workbookNamespaces
-  )
+  $worksheetNames = switch ($System) {
+    'inLux' { @('inLux Test Sheet') }
+    'Virsa' { @('Virsa Test Sheet') }
+    'InVia' { @('InVia Test Sheet', 'Digital Test Sheet', 'Final Test Sheet') }
+  }
+  $sheet = $null
+  foreach ($worksheetName in $worksheetNames) {
+    $sheet = $workbook.SelectSingleNode(
+      "//main:sheet[@name='$worksheetName']",
+      $workbookNamespaces
+    )
+    if ($sheet) { break }
+  }
   if (-not $sheet) {
-    throw "Worksheet '$worksheetName' was not found."
+    throw "A configured worksheet for the $System test sheet was not found."
   }
 
   $relationshipId = $sheet.GetAttribute(
@@ -100,7 +108,11 @@ try {
     'main',
     'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
   )
-  if ($System -eq 'inLux') {
+  if ($System -eq 'InVia') {
+    Set-InlineCellValue $worksheet $worksheetNamespaces 'C3' $JobNumber
+    Set-InlineCellValue $worksheet $worksheetNamespaces 'E3' $CustomerName
+    Set-InlineCellValue $worksheet $worksheetNamespaces 'H3' $SerialNumber
+  } elseif ($System -eq 'inLux') {
     Set-InlineCellValue $worksheet $worksheetNamespaces 'C2' $CustomerName
     Set-InlineCellValue $worksheet $worksheetNamespaces 'C3' $JobNumber
     Set-InlineCellValue $worksheet $worksheetNamespaces 'F3' $SerialNumber
