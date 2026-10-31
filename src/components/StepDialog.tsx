@@ -274,7 +274,11 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
         result = await onCreateTestSheets(true, metadata);
       }
       if (!result.success) {
-        setCompletionError(result.error);
+        setCompletionError(
+          'error' in result
+            ? result.error
+            : `These files still exist and were not replaced:\n${result.conflicts.join('\n')}`
+        );
         return false;
       }
       setCompletionError(null);
