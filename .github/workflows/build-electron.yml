@@ -1,0 +1,60 @@
+name: Build Windows Standalone Executable
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --include=optional --package-lock=false
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Confirm web-build exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path web-build/index.html)) { Write-Error "web build missing"; exit 1 }
+          Get-ChildItem web-build
+
+      - name: Package Windows executable
+        run: npx electron-builder --win portable --publish never
+
+      - name: Verify web app is packaged
+        shell: pwsh
+        run: |
+          Write-Host "--- app.asar contents (excluding node_modules) ---"
+          $list = npx --yes asar list release/win-unpacked/resources/app.asar
+          $list | Where-Object { $_ -notmatch 'node_modules' } | ForEach-Object { Write-Host $_ }
+          if (-not ($list | Select-String -Pattern 'web-build.index\.html' -Quiet)) {
+            Write-Error "index.html missing from app.asar"
+            exit 1
+          }
+
+      - name: Upload Windows Executable Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: digital-traveller-windows-portable
+          path: release/*.exe
+          if-no-files-found: error
+          retention-days: 30

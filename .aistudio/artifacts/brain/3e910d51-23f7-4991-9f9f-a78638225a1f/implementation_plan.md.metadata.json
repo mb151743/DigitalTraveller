@@ -1,0 +1,6 @@
+{
+  "summary":  "Implementation plan for automated GitHub Actions build of standalone Windows executable (.exe) for Digital Traveller without requiring local Node.js installation.",
+  "updatedAt":  "2026-09-28T15:38:01.688574491Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}
