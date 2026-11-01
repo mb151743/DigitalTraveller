@@ -19,11 +19,50 @@ export const SAVE_WIRE_PASSWORDS_STEP_INSTRUCTIONS = [
   'Record the system WiRE passwords in System Details.'
 ];
 export const SYSTEM_FOLDERS_STEP_NAME = 'Create System Folders';
-export const SETUP_STEPS_AFTER_SYSTEM_FOLDERS = [
+export const IN_VIA_VIRSA_SETUP_STEP_NAMES = [
+  PAT_TEST_STEP_NAME,
+  SYSTEM_UNBOXING_STEP_NAME,
+  RECORD_SYSTEM_DETAILS_STEP_NAME,
+  SAVE_WIRE_PASSWORDS_STEP_NAME,
+  UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME,
+  SYSTEM_FOLDERS_STEP_NAME,
+  LASER_GRATING_SELECTION_STEP_NAME,
+  CREATE_TEST_SHEETS_STEP_NAME,
+  LASER_GRATING_FILES_STEP_NAME
+] as const;
+export const IN_VIA_VIRSA_CALIBRATION_STEP_NAMES = [
   'Silicon Internal Reference Standard 520.7 cm⁻¹',
   'Laser Beam Alignment & Safety Interlocks',
-  'Grating Turret & Slit Alignment'
+  'Grating Turret & Slit Alignment',
+  'Fibre Probe Head Coupling & Shutter Test'
 ] as const;
+
+export function normalizeInViaVirsaWorkflowSteps<T extends { name: string; stage: string }>(
+  steps: T[]
+): T[] {
+  const normalizedSteps = steps.map((step) => ({
+    ...step,
+    name: step.name === 'Fiber Probe Head Coupling & Shutter Test'
+      ? 'Fibre Probe Head Coupling & Shutter Test'
+      : step.name
+  }));
+  const setupSteps = IN_VIA_VIRSA_SETUP_STEP_NAMES.flatMap((name) => {
+    const step = normalizedSteps.find((item) => item.name === name);
+    return step ? [{ ...step, stage: 'Set Up' }] : [];
+  });
+  const otherSteps = normalizedSteps
+    .filter((step) => !IN_VIA_VIRSA_SETUP_STEP_NAMES.some((name) => name === step.name))
+    .map((step) => ({
+      ...step,
+      stage: IN_VIA_VIRSA_CALIBRATION_STEP_NAMES.some((name) => name === step.name)
+        ? 'Calibration'
+        : step.stage === 'Setup'
+          ? 'Set Up'
+          : step.stage
+    }));
+
+  return [...setupSteps, ...otherSteps];
+}
 export const LASER_GRATING_FILES_SAVE_INSTRUCTION =
   'Files are saved in the configured system folder under Internal data/Extra Data.';
 export const SYSTEM_FOLDERS_STEP_INSTRUCTIONS = [

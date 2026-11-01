@@ -43,7 +43,9 @@ import {
   SYSTEM_UNBOXING_STEP_NAME,
   SYSTEM_FOLDERS_STEP_NAME,
   SYSTEM_FOLDERS_STEP_INSTRUCTIONS,
-  SETUP_STEPS_AFTER_SYSTEM_FOLDERS,
+  IN_VIA_VIRSA_CALIBRATION_STEP_NAMES,
+  IN_VIA_VIRSA_SETUP_STEP_NAMES,
+  normalizeInViaVirsaWorkflowSteps,
   CREATE_TEST_SHEETS_STEP_NAME,
   CREATE_TEST_SHEETS_STEP_INSTRUCTIONS,
   LASER_GRATING_SELECTION_STEP_NAME,
@@ -471,6 +473,7 @@ export const App: React.FC = () => {
     if (!normalizedStages.includes('Final Test & Release')) normalizedStages.push('Final Test & Release');
 
     let normalizedSteps: WorkflowStep[] = [];
+    const testSheetStage = traveller.system === 'inLux' ? 'Calibration' : 'Set Up';
 
     if (isinVia) {
       const patStep = newSteps.find((s) => s.name === 'PAT Test') || {
@@ -605,28 +608,16 @@ export const App: React.FC = () => {
         s.name !== SYSTEM_FOLDERS_STEP_NAME
       ).map((s) => {
         let stage = s.stage === 'Setup' ? 'Set Up' : s.stage;
-        if (s.name === 'Laser Beam Alignment & Safety Interlocks' || s.name === 'Grating Turret & Slit Alignment') {
-          stage = 'Set Up';
-        }
-        if (s.name === 'Silicon Internal Reference Standard 520.7 cm⁻¹') {
-          stage = 'Set Up';
-        }
-        if (s.name === 'Rayleigh Cut-off Filter Calibration' || s.name === 'CCD Detector Cooling & Dark Count Test') {
+        if (IN_VIA_VIRSA_CALIBRATION_STEP_NAMES.some((name) => name === s.name) ||
+          s.name === 'Rayleigh Cut-off Filter Calibration' ||
+          s.name === 'CCD Detector Cooling & Dark Count Test') {
           stage = 'Calibration';
+        }
+        if (IN_VIA_VIRSA_SETUP_STEP_NAMES.some((name) => name === s.name)) {
+          stage = 'Set Up';
         }
         return { ...s, stage };
       });
-
-      const movedSetupSteps = SETUP_STEPS_AFTER_SYSTEM_FOLDERS.flatMap((name) => {
-        const step = otherSteps.find((item) => item.name === name);
-        return step ? [{ ...step, stage: 'Set Up' }] : [];
-      });
-      const setUpOthers = otherSteps.filter((s) =>
-        s.stage === 'Set Up' &&
-        !SETUP_STEPS_AFTER_SYSTEM_FOLDERS.some((name) => name === s.name)
-      );
-      const calibOthers = otherSteps.filter((s) => s.stage === 'Calibration');
-      const restOthers = otherSteps.filter((s) => s.stage !== 'Set Up' && s.stage !== 'Calibration');
 
       normalizedSteps = [
         { ...patStep, stage: 'Set Up' },
@@ -636,10 +627,7 @@ export const App: React.FC = () => {
         { ...saveWirePasswordsStep, stage: 'Set Up' },
         { ...networkSaveLocationStep, stage: 'Set Up' },
         { ...folderStep, stage: 'Set Up' },
-        ...movedSetupSteps,
-        ...setUpOthers,
-        ...calibOthers,
-        ...restOthers
+        ...otherSteps
       ];
     } else {
       const setupStep = newSteps.find(
@@ -744,19 +732,57 @@ export const App: React.FC = () => {
             checklist: [],
             measuredData: []
           };
-      normalizedSteps = [unboxingStep, detailsStep, saveWirePasswordsStep, networkSaveLocationStep, folderStep, ...newSteps.filter(
-        (step) => ![
-          SYSTEM_UNBOXING_STEP_NAME,
-          'System & PC Unboxing & Set Up',
-          RECORD_SYSTEM_DETAILS_STEP_NAME,
-          SAVE_WIRE_PASSWORDS_STEP_NAME,
-          UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME,
-          SYSTEM_FOLDERS_STEP_NAME
-        ].includes(step.name) && step !== setupStep
-      ).map((s) => ({
-        ...s,
-        stage: s.stage === 'Setup' ? 'Set Up' : s.stage
-      }))];
+      const virsaPatStep = traveller.system === 'Virsa'
+        ? newSteps.find((step) => step.name === 'PAT Test')
+        : undefined;
+      normalizedSteps = [
+        ...(virsaPatStep ? [{ ...virsaPatStep, stage: 'Set Up' as const }] : []),
+        unboxingStep,
+        detailsStep,
+        saveWirePasswordsStep,
+        networkSaveLocationStep,
+        folderStep,
+        ...newSteps.filter(
+          (step) => ![
+            'PAT Test',
+            SYSTEM_UNBOXING_STEP_NAME,
+            'System & PC Unboxing & Set Up',
+            RECORD_SYSTEM_DETAILS_STEP_NAME,
+            SAVE_WIRE_PASSWORDS_STEP_NAME,
+            UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME,
+            SYSTEM_FOLDERS_STEP_NAME
+          ].includes(step.name) && step !== setupStep
+        ).map((s) => ({
+          ...s,
+          stage: s.stage === 'Setup' ? 'Set Up' : s.stage
+        }))
+      ];
+    }
+
+    if (traveller.system === 'inVia' || traveller.system === 'Virsa') {
+      normalizedSteps = normalizeInViaVirsaWorkflowSteps(normalizedSteps);
+      const defaultSteps = WorkflowTemplateService.getTemplate(traveller.system).steps;
+      const requiredNames = [
+        ...IN_VIA_VIRSA_SETUP_STEP_NAMES,
+        ...IN_VIA_VIRSA_CALIBRATION_STEP_NAMES
+      ];
+      for (const stepName of requiredNames) {
+        const defaultStep = defaultSteps.find((step) => step.name === stepName);
+        if (defaultStep && !normalizedSteps.some((step) => step.name === stepName)) {
+          normalizedSteps.push({
+            ...defaultStep,
+            id: `step-${traveller.system}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+            status: 'Not Started',
+            completedAt: null,
+            startedAt: null,
+            technician: '',
+            notes: '',
+            checklist: defaultStep.checklist?.map((item) => ({ ...item })) || [],
+            measuredData: defaultStep.measuredData?.map((item) => ({ ...item })) || []
+          });
+        }
+      }
+      normalizedSteps = normalizeInViaVirsaWorkflowSteps(normalizedSteps);
     }
 
     if (['inVia', 'Virsa', 'inLux'].includes(traveller.system)) {
@@ -770,12 +796,12 @@ export const App: React.FC = () => {
         const testSheetsStep: WorkflowStep = existingIndex >= 0
           ? {
               ...normalizedSteps.splice(existingIndex, 1)[0],
-              stage: 'Calibration'
+              stage: testSheetStage
             }
           : {
               id: `step-${traveller.system}-create-test-sheets-${Date.now().toString(36)}`,
               name: CREATE_TEST_SHEETS_STEP_NAME,
-              stage: 'Calibration',
+              stage: testSheetStage,
               status: 'Not Started',
               completedAt: null,
               startedAt: null,

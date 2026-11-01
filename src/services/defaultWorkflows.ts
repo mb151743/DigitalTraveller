@@ -85,10 +85,10 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
         ]
       },
 
-      // CALIBRATION
+      // SET UP
       {
         name: LASER_GRATING_SELECTION_STEP_NAME,
-        stage: 'Calibration',
+        stage: 'Set Up',
         instructions: [
           'Enter each laser wavelength in nm and grating density in lines/mm.',
           'Add one row for each laser and grating combination used for calibration.'
@@ -96,12 +96,12 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
       },
       {
         name: CREATE_TEST_SHEETS_STEP_NAME,
-        stage: 'Calibration',
+        stage: 'Set Up',
         instructions: [...CREATE_TEST_SHEETS_STEP_INSTRUCTIONS]
       },
       {
         name: LASER_GRATING_FILES_STEP_NAME,
-        stage: 'Calibration',
+        stage: 'Set Up',
         instructions: [
           'Create one blank .txt file for each laser and grating combination.',
           LASER_GRATING_FILES_SAVE_INSTRUCTION
@@ -109,7 +109,7 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
       },
       {
         name: 'Silicon Internal Reference Standard 520.7 cm⁻¹',
-        stage: 'Set Up',
+        stage: 'Calibration',
         instructions: [
           'Load Renishaw certified Silicon (100) reference wafer on motorized XYZ stage.',
           'Execute automated peak center fit on the 520.7 cm⁻¹ first-order optical phonon.',
@@ -127,7 +127,7 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
       },
       {
         name: 'Laser Beam Alignment & Safety Interlocks',
-        stage: 'Set Up',
+        stage: 'Calibration',
         instructions: [
           'Mount primary 532 nm excitation laser and secure beam steering optics.',
           'Align beam onto entrance pinhole with target quadrant detector.',
@@ -144,7 +144,7 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
       },
       {
         name: 'Grating Turret & Slit Alignment',
-        stage: 'Set Up',
+        stage: 'Calibration',
         instructions: [
           'Mount 1800 l/mm and 2400 l/mm holographic gratings.',
           'Initialize stepper motor home positions and verify zero-order retroreflection.'
@@ -218,8 +218,8 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
         ]
       },
       {
-        name: 'Fiber Probe Head Coupling & Shutter Test',
-        stage: 'Set Up',
+        name: 'Fibre Probe Head Coupling & Shutter Test',
+        stage: 'Calibration',
         instructions: [
           'Attach remote objective lens head to SMA905 excitation/collection fiber.',
           'Verify integrated LED targeting illuminator and auto-focus mechanism.',
@@ -231,10 +231,10 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
         ]
       },
 
-      // CALIBRATION
+      // SET UP
       {
         name: LASER_GRATING_SELECTION_STEP_NAME,
-        stage: 'Calibration',
+        stage: 'Set Up',
         instructions: [
           'Enter each laser wavelength in nm and grating density in lines/mm.',
           'Add one row for each laser and grating combination used for calibration.'
@@ -242,17 +242,19 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
       },
       {
         name: CREATE_TEST_SHEETS_STEP_NAME,
-        stage: 'Calibration',
+        stage: 'Set Up',
         instructions: [...CREATE_TEST_SHEETS_STEP_INSTRUCTIONS]
       },
       {
         name: LASER_GRATING_FILES_STEP_NAME,
-        stage: 'Calibration',
+        stage: 'Set Up',
         instructions: [
           'Create one blank .txt file for each laser and grating combination.',
           LASER_GRATING_FILES_SAVE_INSTRUCTION
         ]
       },
+
+      // CALIBRATION
       {
         name: 'Automated Internal Reference Calibration',
         stage: 'Calibration',

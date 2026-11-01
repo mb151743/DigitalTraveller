@@ -19,7 +19,8 @@ import {
   LEGACY_SYSTEM_UNBOXING_STEP_NAME,
   SYSTEM_FOLDERS_STEP_NAME,
   SYSTEM_FOLDERS_STEP_INSTRUCTIONS,
-  SETUP_STEPS_AFTER_SYSTEM_FOLDERS,
+  IN_VIA_VIRSA_CALIBRATION_STEP_NAMES,
+  normalizeInViaVirsaWorkflowSteps,
   PAT_TEST_STEP_INSTRUCTIONS,
   PRE_SYSTEM_TEST_STEP_INSTRUCTIONS
 } from './laserGratingWorkflow';
@@ -322,7 +323,11 @@ export class StorageService {
         step.name === 'CCD Detector Cooling & Dark Count Test'
         ? 'Calibration'
         : step.stage === 'Setup' ? 'Set Up' : step.stage,
-      name: step.name === LEGACY_SYSTEM_UNBOXING_STEP_NAME ? SYSTEM_UNBOXING_STEP_NAME : step.name
+      name: step.name === LEGACY_SYSTEM_UNBOXING_STEP_NAME
+        ? SYSTEM_UNBOXING_STEP_NAME
+        : step.name === 'Fiber Probe Head Coupling & Shutter Test'
+          ? 'Fibre Probe Head Coupling & Shutter Test'
+          : step.name
     }));
 
     const isinVia = record.system === 'inVia';
@@ -489,14 +494,6 @@ export class StorageService {
           s.name !== UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME &&
           s.name !== SYSTEM_FOLDERS_STEP_NAME
       ).map((s) => {
-        // Move the setup alignment steps into Set Up.
-        if (s.name === 'Laser Beam Alignment & Safety Interlocks' || s.name === 'Grating Turret & Slit Alignment') {
-          return { ...s, stage: 'Set Up' };
-        }
-        if (s.name === 'Silicon Internal Reference Standard 520.7 cm⁻¹') {
-          return { ...s, stage: 'Set Up' };
-        }
-        // Keep the remaining hardware calibration checks on the Calibration tab.
         if (s.name === 'Rayleigh Cut-off Filter Calibration' || s.name === 'CCD Detector Cooling & Dark Count Test') {
           return { ...s, stage: 'Calibration' };
         }
@@ -538,18 +535,7 @@ export class StorageService {
       }
 
       const orderedOtherSteps = placeTestSheetsStepAfterSelection(otherSteps);
-      const movedSetupSteps = SETUP_STEPS_AFTER_SYSTEM_FOLDERS.flatMap((name) => {
-        const step = orderedOtherSteps.find((item) => item.name === name);
-        return step ? [{ ...step, stage: 'Set Up' }] : [];
-      });
-      const setUpOthers = orderedOtherSteps.filter((s) =>
-        s.stage === 'Set Up' &&
-        !SETUP_STEPS_AFTER_SYSTEM_FOLDERS.some((name) => name === s.name)
-      );
-      const calibOthers = orderedOtherSteps.filter((s) => s.stage === 'Calibration');
-      const restOthers = orderedOtherSteps.filter((s) => s.stage !== 'Set Up' && s.stage !== 'Calibration');
-
-      const finalSteps: WorkflowStep[] = [
+      const finalSteps = normalizeInViaVirsaWorkflowSteps([
         patStep,
         normalizedPreStep,
         setupStep,
@@ -557,11 +543,8 @@ export class StorageService {
         saveWirePasswordsStep,
         networkSaveLocationStep,
         folderStep,
-        ...movedSetupSteps,
-        ...setUpOthers,
-        ...calibOthers,
-        ...restOthers
-      ];
+        ...orderedOtherSteps
+      ]);
 
       return {
         ...record,
@@ -586,6 +569,7 @@ export class StorageService {
       (step) => step.name === SYSTEM_UNBOXING_STEP_NAME || step.name === LEGACY_SYSTEM_UNBOXING_STEP_NAME
     ) || existingSteps.find((step) =>
       (step.stage === 'Set Up' || step.stage === 'Setup') &&
+      step.name !== PAT_TEST_STEP_NAME &&
       step.name !== RECORD_SYSTEM_DETAILS_STEP_NAME &&
       step.name !== UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME &&
       step.name !== SYSTEM_FOLDERS_STEP_NAME
@@ -687,6 +671,27 @@ export class StorageService {
           measuredData: []
         };
 
+    const virsaPatStepTemplate = record.system === 'Virsa'
+      ? template.steps.find((step) => step.name === PAT_TEST_STEP_NAME)
+      : undefined;
+    const virsaPatStep: WorkflowStep | undefined = record.system === 'Virsa'
+      ? existingSteps.find((step) => step.name === PAT_TEST_STEP_NAME) || (virsaPatStepTemplate
+          ? {
+              ...virsaPatStepTemplate,
+              id: `step-${record.system}-pat-${Date.now().toString(36)}`,
+              stage: 'Set Up',
+              status: 'Not Started',
+              completedAt: null,
+              startedAt: null,
+              technician: '',
+              notes: '',
+              instructions: [...virsaPatStepTemplate.instructions],
+              checklist: virsaPatStepTemplate.checklist?.map((item) => ({ ...item })) || [],
+              measuredData: virsaPatStepTemplate.measuredData?.map((item) => ({ ...item })) || []
+            }
+          : undefined)
+      : undefined;
+
     const otherSteps = existingSteps
       .filter((step) =>
         ![
@@ -696,7 +701,9 @@ export class StorageService {
           SAVE_WIRE_PASSWORDS_STEP_NAME,
           UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME,
           SYSTEM_FOLDERS_STEP_NAME
-        ].includes(step.name) && step !== existingSetupStep
+        ].includes(step.name) &&
+        !(record.system === 'Virsa' && step.name === PAT_TEST_STEP_NAME) &&
+        step !== existingSetupStep
       )
       .map((step) => {
         if (step.name === PRE_SYSTEM_TEST_STEP_NAME) {
@@ -720,40 +727,49 @@ export class StorageService {
         return step;
       });
 
-    const testSheetsTemplateStep = template.steps.find(
-      (step) => step.name === CREATE_TEST_SHEETS_STEP_NAME
-    );
-    if (
-      ['inVia', 'Virsa', 'inLux'].includes(record.system) &&
-      testSheetsTemplateStep &&
-      !otherSteps.some((step) => step.name === CREATE_TEST_SHEETS_STEP_NAME)
-    ) {
-      otherSteps.push({
-        ...testSheetsTemplateStep,
-        id: `step-${record.system}-create-test-sheets-${Date.now().toString(36)}`,
-        status: 'Not Started',
-        completedAt: null,
-        startedAt: null,
-        technician: '',
-        notes: '',
-        checklist: testSheetsTemplateStep.checklist?.map((item) => ({ ...item })) || [],
-        measuredData: testSheetsTemplateStep.measuredData?.map((item) => ({ ...item })) || []
-      });
+    const requiredVirsaSteps = [
+      LASER_GRATING_SELECTION_STEP_NAME,
+      CREATE_TEST_SHEETS_STEP_NAME,
+      LASER_GRATING_FILES_STEP_NAME,
+      ...IN_VIA_VIRSA_CALIBRATION_STEP_NAMES
+    ];
+    if (record.system === 'Virsa') {
+      for (const stepName of requiredVirsaSteps) {
+        const templateStep = template.steps.find((step) => step.name === stepName);
+        if (templateStep && !otherSteps.some((step) => step.name === stepName)) {
+          otherSteps.push({
+            ...templateStep,
+            id: `step-${record.system}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+            status: 'Not Started',
+            completedAt: null,
+            startedAt: null,
+            technician: '',
+            notes: '',
+            checklist: templateStep.checklist?.map((item) => ({ ...item })) || [],
+            measuredData: templateStep.measuredData?.map((item) => ({ ...item })) || []
+          });
+        }
+      }
     }
 
     const orderedOtherSteps = placeTestSheetsStepAfterSelection(otherSteps);
+    const genericSteps: WorkflowStep[] = [
+      ...(virsaPatStep ? [virsaPatStep] : []),
+      unboxingStep,
+      detailsStep,
+      saveWirePasswordsStep,
+      networkSaveLocationStep,
+      systemFolderStep,
+      ...orderedOtherSteps
+    ];
+    const finalSteps = record.system === 'Virsa'
+      ? normalizeInViaVirsaWorkflowSteps(genericSteps)
+      : genericSteps;
     return {
       ...record,
       stages: normalizedStages,
       activeStage,
-      steps: [
-        unboxingStep,
-        detailsStep,
-        saveWirePasswordsStep,
-        networkSaveLocationStep,
-        systemFolderStep,
-        ...orderedOtherSteps
-      ],
+      steps: finalSteps,
       laserGratingCombinations: Array.isArray(record.laserGratingCombinations)
         ? record.laserGratingCombinations.map((combination) => ({
             wavelengthNm:

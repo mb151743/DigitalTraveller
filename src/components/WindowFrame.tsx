@@ -31,7 +31,7 @@ const desktop = () => (window as any).desktopAPI as
 export const WindowFrame: React.FC<WindowFrameProps> = ({
   system,
   serialNumber,
-  version = 'v1.0.9',
+  version = 'v1.1.0',
   logoImage = '',
   theme,
   isAdmin = false,

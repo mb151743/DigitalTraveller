@@ -3,7 +3,6 @@ import { SYSTEM_PROFILES } from './defaultWorkflows';
 import { SystemRegistryService } from './systemRegistryService';
 import {
   LASER_GRATING_FILES_SAVE_INSTRUCTION,
-  LASER_GRATING_FILES_STEP_NAME,
   LASER_GRATING_SELECTION_STEP_NAME,
   CREATE_TEST_SHEETS_STEP_NAME,
   CREATE_TEST_SHEETS_STEP_INSTRUCTIONS,
@@ -22,7 +21,9 @@ import {
   UPDATE_NETWORK_SAVE_LOCATION_STEP_INSTRUCTIONS,
   PAT_TEST_STEP_INSTRUCTIONS,
   PRE_SYSTEM_TEST_STEP_INSTRUCTIONS,
-  SETUP_STEPS_AFTER_SYSTEM_FOLDERS
+  IN_VIA_VIRSA_CALIBRATION_STEP_NAMES,
+  IN_VIA_VIRSA_SETUP_STEP_NAMES,
+  normalizeInViaVirsaWorkflowSteps
 } from './laserGratingWorkflow';
 
 export interface WorkflowTemplateItem {
@@ -110,21 +111,6 @@ function ensureNetworkSaveLocationStepAfterDetails(
   return orderedSteps;
 }
 
-function ensureSetupStepsAfterSystemFolders(
-  steps: WorkflowTemplateItem[]
-): WorkflowTemplateItem[] {
-  const orderedSteps = [...steps];
-  const setupSteps = SETUP_STEPS_AFTER_SYSTEM_FOLDERS.flatMap((name) => {
-    const index = orderedSteps.findIndex((step) => step.name === name);
-    if (index < 0) return [];
-    const [step] = orderedSteps.splice(index, 1);
-    return [{ ...step, stage: 'Set Up' }];
-  });
-  const foldersIndex = orderedSteps.findIndex((step) => step.name === SYSTEM_FOLDERS_STEP_NAME);
-  orderedSteps.splice(foldersIndex < 0 ? orderedSteps.length : foldersIndex + 1, 0, ...setupSteps);
-  return orderedSteps;
-}
-
 function ensureTestSheetsStepAfterSelection(
   steps: WorkflowTemplateItem[],
   system: SystemType
@@ -147,6 +133,91 @@ function ensureTestSheetsStepAfterSelection(
   );
   orderedSteps.splice(updatedSelectionIndex + 1, 0, testSheetsStep);
   return orderedSteps;
+}
+
+function normalizeInViaVirsaTemplateSteps(
+  steps: WorkflowTemplateItem[],
+  system: SystemType
+): WorkflowTemplateItem[] {
+  const profileDefaults = SYSTEM_PROFILES[system]?.defaultSteps || [];
+  const existingSteps = steps.map((step) => ({
+    ...step,
+    name: step.name === 'Fiber Probe Head Coupling & Shutter Test'
+      ? 'Fibre Probe Head Coupling & Shutter Test'
+      : step.name
+  }));
+  const findExisting = (name: string) => existingSteps.find((step) => step.name === name);
+  const findProfileDefault = (name: string) => {
+    const profileStep = profileDefaults.find((step) =>
+      step.name === name ||
+      (name === SYSTEM_UNBOXING_STEP_NAME &&
+        step.stage === 'Set Up' &&
+        step.name !== PAT_TEST_STEP_NAME &&
+        step.name !== PRE_SYSTEM_TEST_STEP_NAME)
+    );
+    return profileStep
+      ? {
+          name,
+          stage: profileStep.stage,
+          instructions: [...profileStep.instructions],
+          checklist: profileStep.checklist?.map((item) => ({ ...item, done: false })),
+          measuredData: profileStep.measuredData?.map((item) => ({ ...item, value: '' }))
+        }
+      : undefined;
+  };
+  const requiredDefault: Record<string, WorkflowTemplateItem> = {
+    [PAT_TEST_STEP_NAME]: PAT_TEST_TEMPLATE_STEP,
+    [RECORD_SYSTEM_DETAILS_STEP_NAME]: RECORD_SYSTEM_DETAILS_TEMPLATE_STEP,
+    [SAVE_WIRE_PASSWORDS_STEP_NAME]: SAVE_WIRE_PASSWORDS_TEMPLATE_STEP,
+    [UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME]: UPDATE_NETWORK_SAVE_LOCATION_TEMPLATE_STEP,
+    [SYSTEM_FOLDERS_STEP_NAME]: SYSTEM_FOLDERS_TEMPLATE_STEP
+  };
+  const requiredSetupSteps = IN_VIA_VIRSA_SETUP_STEP_NAMES.map((name) => {
+    const step = findExisting(name) ||
+      (name === SYSTEM_UNBOXING_STEP_NAME
+        ? findExisting(LEGACY_SYSTEM_UNBOXING_STEP_NAME)
+        : undefined) ||
+      requiredDefault[name] ||
+      findProfileDefault(name);
+    if (!step) {
+      throw new Error(`Missing default workflow step "${name}" for ${system}.`);
+    }
+    return { ...step, name, stage: 'Set Up' };
+  });
+  const preSystemTestStep = system === 'inVia'
+    ? {
+        ...(findExisting(PRE_SYSTEM_TEST_STEP_NAME) || PRE_SYSTEM_TEST_TEMPLATE_STEP),
+        stage: 'Set Up',
+        instructions: [...PRE_SYSTEM_TEST_STEP_INSTRUCTIONS],
+        checklist: [],
+        measuredData: []
+      }
+    : undefined;
+
+  const requiredCalibrationSteps = IN_VIA_VIRSA_CALIBRATION_STEP_NAMES.flatMap((name) => {
+    const step = findExisting(name) || findProfileDefault(name);
+    return step ? [{ ...step, name, stage: 'Calibration' }] : [];
+  });
+  const requiredNames = new Set([
+    ...IN_VIA_VIRSA_SETUP_STEP_NAMES,
+    ...IN_VIA_VIRSA_CALIBRATION_STEP_NAMES,
+    ...(system === 'inVia' ? [PRE_SYSTEM_TEST_STEP_NAME] : []),
+    LEGACY_SYSTEM_UNBOXING_STEP_NAME
+  ]);
+  const additionalSteps = existingSteps.filter((step) => !requiredNames.has(step.name));
+  const existingCalibrationNames = new Set(
+    existingSteps.map((step) => step.name)
+  );
+  const missingCalibrationSteps = requiredCalibrationSteps.filter(
+    (step) => !existingCalibrationNames.has(step.name)
+  );
+
+  return normalizeInViaVirsaWorkflowSteps([
+    ...requiredSetupSteps,
+    ...(preSystemTestStep ? [preSystemTestStep] : []),
+    ...additionalSteps,
+    ...missingCalibrationSteps
+  ]);
 }
 
 export interface WorkflowTemplate {
@@ -186,14 +257,9 @@ export class WorkflowTemplateService {
           if (!stages.includes('Calibration')) stages.push('Calibration');
           if (!stages.includes('Final Test & Release')) stages.push('Final Test & Release');
 
-          let steps = parsed.steps.map((s) => ({
+          const steps = parsed.steps.map((s) => ({
             ...s,
-            stage: s.name === 'Rayleigh Cut-off Filter Calibration' ||
-              s.name === 'CCD Detector Cooling & Dark Count Test'
-              ? 'Calibration'
-              : SETUP_STEPS_AFTER_SYSTEM_FOLDERS.some((name) => s.name === name)
-                ? 'Set Up'
-              : s.stage === 'Setup' ? 'Set Up' : s.stage,
+            stage: s.stage === 'Setup' ? 'Set Up' : s.stage,
             name: s.name === LEGACY_SYSTEM_UNBOXING_STEP_NAME ? SYSTEM_UNBOXING_STEP_NAME : s.name,
             ...(s.name === PRE_SYSTEM_TEST_STEP_NAME
               ? {
@@ -204,120 +270,28 @@ export class WorkflowTemplateService {
               : {})
           }));
 
-          const isinVia = normalizedSystem === 'inVia';
-          if (isinVia) {
-            const hasPat = steps.some((s) => s.name === PAT_TEST_STEP_NAME);
-            const hasPre = steps.some((s) => s.name === PRE_SYSTEM_TEST_STEP_NAME);
-            const hasCorrectOrder =
-              steps[0]?.name === PAT_TEST_STEP_NAME &&
-              steps[1]?.name === PRE_SYSTEM_TEST_STEP_NAME &&
-              steps[2]?.name === SYSTEM_UNBOXING_STEP_NAME &&
-              steps[3]?.name === RECORD_SYSTEM_DETAILS_STEP_NAME &&
-              steps[4]?.name === SAVE_WIRE_PASSWORDS_STEP_NAME &&
-              steps[5]?.name === UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME &&
-              steps[6]?.name === SYSTEM_FOLDERS_STEP_NAME;
-
-            const needsMigration = !hasPat || !hasPre || !hasCorrectOrder || parsed.version !== '2.4.0';
-            if (needsMigration) {
-              const patStep = steps.find((s) => s.name === PAT_TEST_STEP_NAME) || PAT_TEST_TEMPLATE_STEP;
-              const preSysStep = steps.find((s) => s.name === PRE_SYSTEM_TEST_STEP_NAME) || PRE_SYSTEM_TEST_TEMPLATE_STEP;
-              const setupStep = steps.find((s) => s.name === SYSTEM_UNBOXING_STEP_NAME || s.name === LEGACY_SYSTEM_UNBOXING_STEP_NAME) || SYSTEM_UNBOXING_TEMPLATE_STEP;
-              const recordDetailsStep = steps.find((s) => s.name === RECORD_SYSTEM_DETAILS_STEP_NAME) || RECORD_SYSTEM_DETAILS_TEMPLATE_STEP;
-              const saveWirePasswordsStep =
-                steps.find((s) => s.name === SAVE_WIRE_PASSWORDS_STEP_NAME) || SAVE_WIRE_PASSWORDS_TEMPLATE_STEP;
-              const networkSaveLocationStep =
-                steps.find((s) => s.name === UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME) ||
-                UPDATE_NETWORK_SAVE_LOCATION_TEMPLATE_STEP;
-              const folderStep = steps.find((s) => s.name === SYSTEM_FOLDERS_STEP_NAME) || SYSTEM_FOLDERS_TEMPLATE_STEP;
-
-              const otherSteps = steps.filter((s) =>
-                s.name !== PAT_TEST_STEP_NAME &&
-                s.name !== PRE_SYSTEM_TEST_STEP_NAME &&
-                s.name !== SYSTEM_UNBOXING_STEP_NAME &&
-                s.name !== LEGACY_SYSTEM_UNBOXING_STEP_NAME &&
-                s.name !== RECORD_SYSTEM_DETAILS_STEP_NAME &&
-                s.name !== SAVE_WIRE_PASSWORDS_STEP_NAME &&
-                s.name !== UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME &&
-                s.name !== SYSTEM_FOLDERS_STEP_NAME
-              ).map((s) => {
-                if (SETUP_STEPS_AFTER_SYSTEM_FOLDERS.some((name) => name === s.name)) {
-                  return { ...s, stage: 'Set Up' as const };
-                }
-                // Calibration hardware checks belong with the calibration workflow.
-                if (s.name === 'Rayleigh Cut-off Filter Calibration' || s.name === 'CCD Detector Cooling & Dark Count Test') {
-                  return { ...s, stage: 'Calibration' as const };
-                }
-                return s;
-              });
-
-              // Also ensure required calibration steps exist
-              const requiredSteps = (SYSTEM_PROFILES.inVia?.defaultSteps || []).filter(
-                (step) => step.name === LASER_GRATING_SELECTION_STEP_NAME ||
-                  step.name === CREATE_TEST_SHEETS_STEP_NAME ||
-                  step.name === LASER_GRATING_FILES_STEP_NAME ||
-                  step.name === 'Silicon Internal Reference Standard 520.7 cm⁻¹' ||
-                  step.name === 'Laser Beam Alignment & Safety Interlocks' ||
-                  step.name === 'Grating Turret & Slit Alignment' ||
-                  step.name === 'Rayleigh Cut-off Filter Calibration' ||
-                  step.name === 'CCD Detector Cooling & Dark Count Test'
-              );
-              for (const req of requiredSteps) {
-                if (!otherSteps.some((s) => s.name === req.name)) {
-                  otherSteps.push({
-                    name: req.name,
-                    stage: req.stage,
-                    instructions: [...req.instructions],
-                    checklist: req.checklist?.map((c) => ({ ...c })),
-                    measuredData: req.measuredData?.map((m) => ({ ...m }))
-                  });
-                }
-              }
-
-              const orderedOtherSteps = ensureTestSheetsStepAfterSelection(otherSteps, normalizedSystem);
-              const movedSetupSteps = SETUP_STEPS_AFTER_SYSTEM_FOLDERS.flatMap((name) => {
-                const step = orderedOtherSteps.find((item) => item.name === name);
-                return step ? [{ ...step, stage: 'Set Up' }] : [];
-              });
-              const setUpOthers = orderedOtherSteps.filter((s) =>
-                s.stage === 'Set Up' &&
-                !SETUP_STEPS_AFTER_SYSTEM_FOLDERS.some((name) => name === s.name)
-              );
-              const calibOthers = orderedOtherSteps.filter((s) => s.stage === 'Calibration');
-              const restOthers = orderedOtherSteps.filter((s) => s.stage !== 'Set Up' && s.stage !== 'Calibration');
-
-              const updatedTemplate: WorkflowTemplate = {
-                system: 'inVia',
-                stages,
-                steps: [
-                  { ...patStep, stage: 'Set Up' },
-                  { ...preSysStep, stage: 'Set Up' },
-                  { ...setupStep, stage: 'Set Up', name: SYSTEM_UNBOXING_STEP_NAME },
-                  { ...recordDetailsStep, stage: 'Set Up' },
-                  { ...saveWirePasswordsStep, stage: 'Set Up' },
-                  { ...networkSaveLocationStep, stage: 'Set Up' },
-                  { ...folderStep, stage: 'Set Up' },
-                  ...movedSetupSteps,
-                  ...setUpOthers,
-                  ...calibOthers,
-                  ...restOthers
-                ],
-                version: '2.4.0',
-                lastUpdated: new Date().toISOString()
-              };
-              this.saveTemplate(updatedTemplate);
-              return updatedTemplate;
-            }
-          }
-
-          return {
-            ...parsed,
-            stages,
-            steps: ensureSetupStepsAfterSystemFolders(
-              ensureNetworkSaveLocationStepAfterDetails(
+          const isInViaOrVirsa = normalizedSystem === 'inVia' || normalizedSystem === 'Virsa';
+          const normalizedSteps = isInViaOrVirsa
+            ? normalizeInViaVirsaTemplateSteps(steps, normalizedSystem)
+            : ensureNetworkSaveLocationStepAfterDetails(
                 ensureTestSheetsStepAfterSelection(steps, normalizedSystem)
-              )
-            )
+              );
+          const updatedTemplate: WorkflowTemplate = {
+            ...parsed,
+            system: normalizedSystem,
+            stages,
+            steps: normalizedSteps,
+            version: isInViaOrVirsa ? '2.5.0' : parsed.version,
+            lastUpdated: parsed.lastUpdated || new Date().toISOString()
           };
+          if (
+            isInViaOrVirsa &&
+            (parsed.version !== '2.5.0' ||
+              JSON.stringify(parsed.steps) !== JSON.stringify(normalizedSteps))
+          ) {
+            this.saveTemplate(updatedTemplate);
+          }
+          return updatedTemplate;
         }
       }
     } catch (e) {
@@ -353,17 +327,6 @@ export class WorkflowTemplateService {
           s.name !== SYSTEM_UNBOXING_STEP_NAME
         );
 
-        const movedSetupSteps = SETUP_STEPS_AFTER_SYSTEM_FOLDERS.flatMap((name) => {
-          const step = otherSteps.find((item) => item.name === name);
-          return step ? [{ ...step, stage: 'Set Up' }] : [];
-        });
-        const setUpOthers = otherSteps.filter((s) =>
-          s.stage === 'Set Up' &&
-          !SETUP_STEPS_AFTER_SYSTEM_FOLDERS.some((name) => name === s.name)
-        );
-        const calibOthers = otherSteps.filter((s) => s.stage === 'Calibration');
-        const restOthers = otherSteps.filter((s) => s.stage !== 'Set Up' && s.stage !== 'Calibration');
-
         defaultSteps = [
           patStep,
           preSysStep,
@@ -372,10 +335,7 @@ export class WorkflowTemplateService {
           SAVE_WIRE_PASSWORDS_TEMPLATE_STEP,
           UPDATE_NETWORK_SAVE_LOCATION_TEMPLATE_STEP,
           SYSTEM_FOLDERS_TEMPLATE_STEP,
-          ...movedSetupSteps,
-          ...setUpOthers,
-          ...calibOthers,
-          ...restOthers
+          ...otherSteps
         ];
       } else {
         defaultSteps = profile.defaultSteps.map((s) => ({
@@ -458,11 +418,15 @@ export class WorkflowTemplateService {
       ];
     }
 
+    if (normalizedSystem === 'inVia' || normalizedSystem === 'Virsa') {
+      defaultSteps = normalizeInViaVirsaTemplateSteps(defaultSteps, normalizedSystem);
+    }
+
     const initialTemplate: WorkflowTemplate = {
       system: normalizedSystem,
       stages: defaultStages,
       steps: defaultSteps,
-      version: '2.4.0',
+      version: '2.5.0',
       lastUpdated: new Date().toISOString()
     };
 
