@@ -40,7 +40,7 @@ jobs:
       - name: Package Windows executable
         run: npx electron-builder --win portable --publish never
 
-      - name: Create DigitalTraveller ZIP
+      - name: Prepare DigitalTraveller executable
         shell: pwsh
         run: |
           $executables = @(Get-ChildItem release -Filter *.exe -File)
@@ -54,12 +54,8 @@ jobs:
             Move-Item -LiteralPath $executables[0].FullName -Destination $executablePath
           }
 
-          $zipPath = Join-Path (Resolve-Path release).Path "DigitalTraveller.zip"
-          Compress-Archive -LiteralPath $executablePath -DestinationPath $zipPath -CompressionLevel Optimal
-
-          $archiveContents = @(tar -tf $zipPath)
-          if ($LASTEXITCODE -ne 0 -or $archiveContents -notcontains "DigitalTraveller.exe") {
-            Write-Error "DigitalTraveller.zip does not contain DigitalTraveller.exe."
+          if (-not (Test-Path -LiteralPath $executablePath -PathType Leaf)) {
+            Write-Error "DigitalTraveller.exe was not created."
             exit 1
           }
 
@@ -78,6 +74,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: DigitalTraveller
-          path: release/DigitalTraveller.zip
+          path: release/DigitalTraveller.exe
           if-no-files-found: error
           retention-days: 30
