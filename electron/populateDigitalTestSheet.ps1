@@ -6,7 +6,8 @@ param(
   [Parameter(Mandatory = $true)][AllowEmptyString()][string]$PartNumber,
   [Parameter(Mandatory = $true)][AllowEmptyString()][string]$SerialNumber,
   [Parameter(Mandatory = $true)][AllowEmptyString()][string]$PowerMeterSerialNumber,
-  [Parameter(Mandatory = $true)][AllowEmptyString()][string]$PowerMeterHeadSerialNumber
+  [Parameter(Mandatory = $true)][AllowEmptyString()][string]$PowerMeterHeadSerialNumber,
+  [Parameter(Mandatory = $true)][string]$CellMappingsJson
 )
 
 $ErrorActionPreference = 'Stop'
@@ -108,23 +109,20 @@ try {
     'main',
     'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
   )
-  if ($System -eq 'InVia') {
-    Set-InlineCellValue $worksheet $worksheetNamespaces 'C3' $JobNumber
-    Set-InlineCellValue $worksheet $worksheetNamespaces 'E3' $CustomerName
-    Set-InlineCellValue $worksheet $worksheetNamespaces 'H3' $SerialNumber
-  } elseif ($System -eq 'inLux') {
-    Set-InlineCellValue $worksheet $worksheetNamespaces 'C2' $CustomerName
-    Set-InlineCellValue $worksheet $worksheetNamespaces 'C3' $JobNumber
-    Set-InlineCellValue $worksheet $worksheetNamespaces 'F3' $SerialNumber
-    Set-InlineCellValue $worksheet $worksheetNamespaces 'E10' $PowerMeterSerialNumber
-    Set-InlineCellValue $worksheet $worksheetNamespaces 'G10' $PowerMeterHeadSerialNumber
-  } else {
-    Set-InlineCellValue $worksheet $worksheetNamespaces 'C2' $JobNumber
-    Set-InlineCellValue $worksheet $worksheetNamespaces 'E2' $CustomerName
-    Set-InlineCellValue $worksheet $worksheetNamespaces 'G2' $PartNumber
-    Set-InlineCellValue $worksheet $worksheetNamespaces 'I2' $SerialNumber
-    Set-InlineCellValue $worksheet $worksheetNamespaces 'C5' $PowerMeterSerialNumber
-    Set-InlineCellValue $worksheet $worksheetNamespaces 'E5' $PowerMeterHeadSerialNumber
+  $cellMappings = ConvertFrom-Json -InputObject $CellMappingsJson
+  $values = @{
+    jobNumber = $JobNumber
+    customerName = $CustomerName
+    partNumber = $PartNumber
+    serialNumber = $SerialNumber
+    powerMeterSerialNumber = $PowerMeterSerialNumber
+    powerMeterHeadSerialNumber = $PowerMeterHeadSerialNumber
+  }
+  foreach ($field in $values.Keys) {
+    $cellReference = $cellMappings.$field
+    if ($cellReference) {
+      Set-InlineCellValue $worksheet $worksheetNamespaces $cellReference $values[$field]
+    }
   }
 
   $entry = $archive.GetEntry($worksheetPath)

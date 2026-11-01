@@ -19,6 +19,7 @@ import {
   LEGACY_SYSTEM_UNBOXING_STEP_NAME,
   SYSTEM_FOLDERS_STEP_NAME,
   SYSTEM_FOLDERS_STEP_INSTRUCTIONS,
+  SETUP_STEPS_AFTER_SYSTEM_FOLDERS,
   PAT_TEST_STEP_INSTRUCTIONS,
   PRE_SYSTEM_TEST_STEP_INSTRUCTIONS
 } from './laserGratingWorkflow';
@@ -73,7 +74,6 @@ export class StorageService {
     
     // S/N is blank until entered
     const serial = customSerial !== undefined ? customSerial.trim() : '';
-    const workOrder = `WO-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const operator = operatorName || this.getLastActiveTechnician() || 'M. Brown';
 
     // Load persistent template (persists custom tabs and steps added by Admin)
@@ -96,7 +96,6 @@ export class StorageService {
       id: `traveller-${Date.now()}`,
       serialNumber: serial,
       system: normalizedSystem,
-      workOrderNumber: workOrder,
       customerName: customerName || '',
       jobNumber: jobNumber || '',
       partNumber: partNumber || '',
@@ -300,6 +299,10 @@ export class StorageService {
   }
 
   private static ensureWorkflowSteps(record: TravellerRecord): TravellerRecord {
+    const recordWithoutWorkOrder = { ...(record as TravellerRecord & { workOrderNumber?: unknown }) };
+    delete recordWithoutWorkOrder.workOrderNumber;
+    record = recordWithoutWorkOrder;
+
     const template = WorkflowTemplateService.getTemplate(record.system);
 
     // Normalize stages: rename 'Setup' to 'Set Up'
@@ -486,11 +489,14 @@ export class StorageService {
           s.name !== UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME &&
           s.name !== SYSTEM_FOLDERS_STEP_NAME
       ).map((s) => {
-        // Remap Laser Beam Alignment and Grating Turret to Calibration tab
+        // Move the setup alignment steps into Set Up.
         if (s.name === 'Laser Beam Alignment & Safety Interlocks' || s.name === 'Grating Turret & Slit Alignment') {
-          return { ...s, stage: 'Calibration' };
+          return { ...s, stage: 'Set Up' };
         }
-        // Keep these hardware calibration checks on the Calibration tab.
+        if (s.name === 'Silicon Internal Reference Standard 520.7 cm⁻¹') {
+          return { ...s, stage: 'Set Up' };
+        }
+        // Keep the remaining hardware calibration checks on the Calibration tab.
         if (s.name === 'Rayleigh Cut-off Filter Calibration' || s.name === 'CCD Detector Cooling & Dark Count Test') {
           return { ...s, stage: 'Calibration' };
         }
@@ -532,7 +538,14 @@ export class StorageService {
       }
 
       const orderedOtherSteps = placeTestSheetsStepAfterSelection(otherSteps);
-      const setUpOthers = orderedOtherSteps.filter((s) => s.stage === 'Set Up');
+      const movedSetupSteps = SETUP_STEPS_AFTER_SYSTEM_FOLDERS.flatMap((name) => {
+        const step = orderedOtherSteps.find((item) => item.name === name);
+        return step ? [{ ...step, stage: 'Set Up' }] : [];
+      });
+      const setUpOthers = orderedOtherSteps.filter((s) =>
+        s.stage === 'Set Up' &&
+        !SETUP_STEPS_AFTER_SYSTEM_FOLDERS.some((name) => name === s.name)
+      );
       const calibOthers = orderedOtherSteps.filter((s) => s.stage === 'Calibration');
       const restOthers = orderedOtherSteps.filter((s) => s.stage !== 'Set Up' && s.stage !== 'Calibration');
 
@@ -544,6 +557,7 @@ export class StorageService {
         saveWirePasswordsStep,
         networkSaveLocationStep,
         folderStep,
+        ...movedSetupSteps,
         ...setUpOthers,
         ...calibOthers,
         ...restOthers

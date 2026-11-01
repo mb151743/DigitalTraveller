@@ -4,12 +4,19 @@ import { SystemRegistryService } from './systemRegistryService';
 export interface NetworkShareLocation {
   id: string;
   name: string;
-  category: 'Master Sheet' | 'Test Data Copies' | 'Master Test Records' | 'Custom';
+  category: 'Master Sheet' | 'Test Acceptance Record' | 'Minor Deviation Log' | 'Custom';
   path: string;
   description: string;
 }
 
 const STORAGE_KEY_NETWORK_SHARES = 'digital_traveller_network_share_configs_v2';
+const STORAGE_KEY_NETWORK_SAVE_LOCATIONS = 'digital_traveller_network_save_locations_v1';
+
+const DEFAULT_NETWORK_SAVE_LOCATIONS: Record<string, string> = {
+  inVia: '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Test\\Final Test Data\\InVia\\000000_INLUX0726-11_CDC\\Internal data\\Digital Test Sheets\\',
+  Virsa: '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Test\\Final Test Data\\Virsa\\000000_INLUX0726-11_CDC\\Internal data\\Digital Test Sheets\\',
+  inLux: '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Test\\Final Test Data\\inLux\\000000_INLUX0726-11_CDC\\Internal data\\Digital Test Sheets\\'
+};
 
 /**
  * Renishaw production network share paths
@@ -24,18 +31,18 @@ export const DEFAULT_NETWORK_CONFIGS: Record<string, [NetworkShareLocation, Netw
       description: 'inVia master digital test sheet template PT-70046-12'
     },
     {
-      id: 'invia-test-data',
-      name: 'Final Test Data Copies (Laser & Grating)',
-      category: 'Test Data Copies',
-      path: '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Test\\Final Test Data\\InVia\\000000_INLUX0726-11_CDC\\Internal data\\Digital Test Sheets\\',
-      description: 'Saved test sheet copies for each laser and grating combination'
+      id: 'invia-test-acceptance',
+      name: 'Test Acceptance Record.xlsm',
+      category: 'Test Acceptance Record',
+      path: '',
+      description: 'Master Test Acceptance Record workbook'
     },
     {
-      id: 'invia-deviations-acceptance',
-      name: 'Master Test Acceptance & Minor Deviation Records',
-      category: 'Master Test Records',
+      id: 'invia-minor-deviation',
+      name: 'Minor Deviation Log.xlsm',
+      category: 'Minor Deviation Log',
       path: '',
-      description: 'Folder containing the inVia master Test Acceptance Record.xlsm and Minor Deviation Record.xlsm'
+      description: 'Master Minor Deviation Log workbook'
     }
   ],
   Virsa: [
@@ -47,18 +54,18 @@ export const DEFAULT_NETWORK_CONFIGS: Record<string, [NetworkShareLocation, Netw
       description: 'Virsa master digital test sheet template PT-70152-06'
     },
     {
-      id: 'virsa-test-data',
-      name: 'Final Test Data Copies (Laser & Grating)',
-      category: 'Test Data Copies',
-      path: '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Test\\Final Test Data\\Virsa\\000000_INLUX0726-11_CDC\\Internal data\\Digital Test Sheets\\',
-      description: 'Saved Virsa test sheet copies for each laser and grating combination'
+      id: 'virsa-test-acceptance',
+      name: 'Test Acceptance Record.xlsm',
+      category: 'Test Acceptance Record',
+      path: '',
+      description: 'Master Test Acceptance Record workbook'
     },
     {
-      id: 'virsa-deviations-acceptance',
-      name: 'Master Test Acceptance & Minor Deviation Records',
-      category: 'Master Test Records',
+      id: 'virsa-minor-deviation',
+      name: 'Minor Deviation Log.xlsm',
+      category: 'Minor Deviation Log',
       path: '',
-      description: 'Folder containing the Virsa master Test Acceptance Record.xlsm and Minor Deviation Record.xlsm'
+      description: 'Master Minor Deviation Log workbook'
     }
   ],
   inLux: [
@@ -70,18 +77,18 @@ export const DEFAULT_NETWORK_CONFIGS: Record<string, [NetworkShareLocation, Netw
       description: 'inLux master digital test sheet template PT-70151 (whole system)'
     },
     {
-      id: 'inlux-test-data',
-      name: 'Final Test Data Copies (Whole System)',
-      category: 'Test Data Copies',
-      path: '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Test\\Final Test Data\\inLux\\000000_INLUX0726-11_CDC\\Internal data\\Digital Test Sheets\\',
-      description: 'Saved inLux test sheet copies for the whole system run'
+      id: 'inlux-test-acceptance',
+      name: 'Test Acceptance Record.xlsm',
+      category: 'Test Acceptance Record',
+      path: '',
+      description: 'Master Test Acceptance Record workbook'
     },
     {
-      id: 'inlux-deviations-acceptance',
-      name: 'Master Test Acceptance & Minor Deviation Records',
-      category: 'Master Test Records',
+      id: 'inlux-minor-deviation',
+      name: 'Minor Deviation Log.xlsm',
+      category: 'Minor Deviation Log',
       path: '',
-      description: 'Folder containing the inLux master Test Acceptance Record.xlsm and Minor Deviation Record.xlsm'
+      description: 'Master Minor Deviation Log workbook'
     }
   ]
 };
@@ -103,18 +110,18 @@ export class NetworkShareConfigService {
         description: `Master digital test sheet template for ${systemName}`
       },
       {
-        id: `${slug}-test-data`,
-        name: `${systemName} Final Test Data Copies`,
-        category: 'Test Data Copies',
-        path: `\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Test\\Final Test Data\\${slug}\\Internal data\\Digital Test Sheets\\`,
-        description: `Saved test sheets directory for ${systemName}`
+        id: `${slug}-test-acceptance`,
+        name: 'Test Acceptance Record.xlsm',
+        category: 'Test Acceptance Record',
+        path: '',
+        description: `Master Test Acceptance Record workbook for ${systemName}`
       },
       {
-        id: `${slug}-deviations-acceptance`,
-        name: `${systemName} Master Test Acceptance & Minor Deviation Records`,
-        category: 'Master Test Records',
+        id: `${slug}-minor-deviation`,
+        name: 'Minor Deviation Log.xlsm',
+        category: 'Minor Deviation Log',
         path: '',
-        description: `Folder containing the ${systemName} master Test Acceptance Record.xlsm and Minor Deviation Record.xlsm`
+        description: `Master Minor Deviation Log workbook for ${systemName}`
       }
     ];
   }
@@ -125,7 +132,9 @@ export class NetworkShareConfigService {
   static getAllConfigs(): Record<string, [NetworkShareLocation, NetworkShareLocation, NetworkShareLocation]> {
     const registeredSystems = SystemRegistryService.getSystems();
     let configs: Record<string, [NetworkShareLocation, NetworkShareLocation, NetworkShareLocation]> = {};
-    let migratedRecordLocations = false;
+    let networkSaveLocations: Record<string, string> = {};
+    let migratedLocations = false;
+    let migratedSaveLocations = false;
 
     try {
       const stored = localStorage.getItem(STORAGE_KEY_NETWORK_SHARES);
@@ -135,6 +144,39 @@ export class NetworkShareConfigService {
     } catch (e) {
       console.warn('Failed to parse network share configs from localStorage', e);
     }
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_NETWORK_SAVE_LOCATIONS);
+      if (stored) networkSaveLocations = JSON.parse(stored);
+    } catch (e) {
+      console.warn('Failed to parse network save locations from localStorage', e);
+    }
+
+    Object.entries(configs).forEach(([system, locations]) => {
+      if (String(locations?.[1]?.category) === 'Test Data Copies') {
+        networkSaveLocations[system] = networkSaveLocations[system] || locations[1].path;
+        migratedSaveLocations = true;
+        const oldRecordFolder = locations[2]?.path?.replace(/[\\/]+$/, '') || '';
+        const migrated: [NetworkShareLocation, NetworkShareLocation, NetworkShareLocation] = [
+          locations[0],
+          {
+            id: `${system}-test-acceptance`,
+            name: 'Test Acceptance Record.xlsm',
+            category: 'Test Acceptance Record',
+            path: oldRecordFolder ? `${oldRecordFolder}\\Test Acceptance Record.xlsm` : '',
+            description: 'Master Test Acceptance Record workbook'
+          },
+          {
+            id: `${system}-minor-deviation`,
+            name: 'Minor Deviation Log.xlsm',
+            category: 'Minor Deviation Log',
+            path: oldRecordFolder ? `${oldRecordFolder}\\Minor Deviation Log.xlsm` : '',
+            description: 'Master Minor Deviation Log workbook'
+          }
+        ];
+        configs[system] = migrated;
+        migratedLocations = true;
+      }
+    });
 
     // Ensure built-in systems have defaults if missing
     Object.keys(DEFAULT_NETWORK_CONFIGS).forEach((sys) => {
@@ -146,24 +188,40 @@ export class NetworkShareConfigService {
     // Ensure any custom added system has 3 configured locations
     registeredSystems.forEach((sys) => {
       if (!configs[sys]) {
-        configs[sys] = this.generateDefaultLocationsForCustomSystem(sys);
+        configs[sys] = NetworkShareConfigService.generateDefaultLocationsForCustomSystem(sys);
       }
     });
 
-    Object.values(configs).forEach((locations) => {
-      const recordLocation = locations[2];
-      if (recordLocation.category !== 'Master Test Records') {
-        recordLocation.category = 'Master Test Records';
-        recordLocation.name = 'Master Test Acceptance & Minor Deviation Records';
-        recordLocation.description =
-          'Folder containing this system’s master Test Acceptance Record.xlsm and Minor Deviation Record.xlsm';
-        recordLocation.path = recordLocation.path.replace(/[\\/][^\\/]+\.xlsm$/i, '');
-        migratedRecordLocations = true;
+    if (migratedSaveLocations) {
+      try {
+        localStorage.setItem(STORAGE_KEY_NETWORK_SAVE_LOCATIONS, JSON.stringify(networkSaveLocations));
+      } catch (e) {
+        console.error('Failed to save network save location configuration', e);
       }
-    });
-
-    if (migratedRecordLocations) this.saveAllConfigs(configs);
+    }
+    if (migratedLocations) NetworkShareConfigService.saveAllConfigs(configs);
     return configs;
+  }
+
+  static getNetworkSaveLocation(system: SystemType): string {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_NETWORK_SAVE_LOCATIONS);
+      if (stored) {
+        const locations = JSON.parse(stored) as Record<string, unknown>;
+        if (typeof locations[system] === 'string') return locations[system] as string;
+      }
+    } catch (e) {
+      console.warn('Failed to load network save locations', e);
+    }
+    return DEFAULT_NETWORK_SAVE_LOCATIONS[system] ||
+      `\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Test\\Final Test Data\\${system.replace(/\s+/g, '_')}\\Internal data\\Digital Test Sheets\\`;
+  }
+
+  static setNetworkSaveLocation(system: SystemType, location: string): void {
+    const stored = localStorage.getItem(STORAGE_KEY_NETWORK_SAVE_LOCATIONS);
+    const locations = stored ? JSON.parse(stored) as Record<string, string> : {};
+    locations[system] = location.trim();
+    localStorage.setItem(STORAGE_KEY_NETWORK_SAVE_LOCATIONS, JSON.stringify(locations));
   }
 
   /**
@@ -217,6 +275,7 @@ export class NetworkShareConfigService {
   static resetToDefaults(): Record<string, [NetworkShareLocation, NetworkShareLocation, NetworkShareLocation]> {
     try {
       localStorage.removeItem(STORAGE_KEY_NETWORK_SHARES);
+      localStorage.removeItem(STORAGE_KEY_NETWORK_SAVE_LOCATIONS);
     } catch (e) {
       console.error('Failed to reset network share configurations', e);
     }

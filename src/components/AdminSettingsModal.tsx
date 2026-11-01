@@ -29,6 +29,7 @@ import {
   DigitalTestSheetSettingsService,
   DigitalTestSheetSettings
 } from '../services/digitalTestSheetSettingsService';
+import { DigitalTestSheetField } from '../types/traveller';
 
 interface AdminSettingsModalProps {
   isOpen: boolean;
@@ -73,10 +74,17 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
   const [newSystemInput, setNewSystemInput] = useState('');
   const [newSystemDesc, setNewSystemDesc] = useState('');
   const [saveLocation, setSaveLocation] = useState(StorageService.getSaveLocation);
+  const [networkSaveLocation, setNetworkSaveLocation] = useState(() =>
+    NetworkShareConfigService.getNetworkSaveLocation(system)
+  );
   const [digitalTestSheetSettings, setDigitalTestSheetSettings] = useState<DigitalTestSheetSettings>(
     DigitalTestSheetSettingsService.get
   );
+  const [cellMappingDraft, setCellMappingDraft] = useState(
+    () => DigitalTestSheetSettingsService.get().cellMappings
+  );
   const [virsaSettingsError, setVirsaSettingsError] = useState<string | null>(null);
+  const [cellMappingError, setCellMappingError] = useState<string | null>(null);
 
   const multiWorkflowFileInputRef = useRef<HTMLInputElement>(null);
   const excelSyncInputRef = useRef<HTMLInputElement>(null);
@@ -106,38 +114,70 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
     setNetworkConfigs({ ...updated });
   };
 
-  // Update a specific network location name / label
-  const handleUpdateName = (sys: SystemType, index: 0 | 1 | 2, newName: string) => {
-    const updated = NetworkShareConfigService.updateLocation(sys, index, { name: newName });
-    setNetworkConfigs({ ...updated });
-  };
-
-  const handleBrowseMasterRecordsFolder = async () => {
-    const selectDirectory = window.desktopAPI?.selectNetworkDirectory;
-    if (!selectDirectory) {
+  const handleUpdateNetworkSaveLocation = (sys: SystemType, location: string) => {
+    try {
+      NetworkShareConfigService.setNetworkSaveLocation(sys, location);
+      if (sys === selectedSystemFilter) setNetworkSaveLocation(location);
+    } catch (error) {
       setMessage({
         type: 'error',
-        text: 'Browsing for a master records folder is available in the Windows desktop app. You can enter a path directly.'
+        text: `Could not save the network save location: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`
+      });
+    }
+  };
+
+  const handleBrowseLocationFile = async () => {
+    const selectFile = window.desktopAPI?.selectNetworkFile;
+    if (!selectFile) {
+      setMessage({
+        type: 'error',
+        text: 'Browsing for workbooks is available in the Windows desktop app. You can enter a path directly.'
       });
       return;
     }
 
     try {
-      const selectedDirectory = await selectDirectory();
-      if (!selectedDirectory) return;
+      const selectedFile = await selectFile();
+      if (!selectedFile) return;
       const index = activeSystemLocations.findIndex((location) => location.id === activeLocation.id);
       if (index >= 0) {
         const updated = NetworkShareConfigService.updateLocation(
           selectedSystemFilter,
           index as 0 | 1 | 2,
-          { path: selectedDirectory }
+          { path: selectedFile }
         );
         setNetworkConfigs({ ...updated });
       }
     } catch (error) {
       setMessage({
         type: 'error',
-        text: `Could not browse for the master records folder: ${
+        text: `Could not browse for the workbook: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`
+      });
+    }
+  };
+
+  const handleBrowseNetworkSaveLocation = async () => {
+    const selectDirectory = window.desktopAPI?.selectNetworkDirectory;
+    if (!selectDirectory) {
+      setMessage({
+        type: 'error',
+        text: 'Browsing for a network save location is available in the Windows desktop app. You can enter a path directly.'
+      });
+      return;
+    }
+    try {
+      const selectedDirectory = await selectDirectory();
+      if (selectedDirectory) {
+        handleUpdateNetworkSaveLocation(selectedSystemFilter, selectedDirectory);
+      }
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: `Could not browse for the network save location: ${
           error instanceof Error ? error.message : 'Unknown error'
         }`
       });
@@ -145,7 +185,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
   };
 
   const handleUpdateVirsaTestSheetSetting = (
-    field: keyof DigitalTestSheetSettings,
+    field: 'powerMeterSerialNumber' | 'powerMeterHeadSerialNumber',
     value: string
   ) => {
     const updated = { ...digitalTestSheetSettings, [field]: value };
@@ -156,6 +196,52 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
     } catch (error) {
       setVirsaSettingsError(
         error instanceof Error ? error.message : 'Could not save Virsa test sheet settings.'
+      );
+    }
+  };
+
+  const handleUpdateCellMapping = (
+    field: DigitalTestSheetField,
+    value: string
+  ) => {
+    const normalizedValue = value.trim().toUpperCase();
+    const updatedDraft = {
+      ...cellMappingDraft,
+      [selectedSystemFilter]: {
+        ...cellMappingDraft[selectedSystemFilter],
+        [field]: normalizedValue
+      }
+    };
+    setCellMappingDraft(updatedDraft);
+    const hasInvalidCell = Object.values(updatedDraft).some((mappings) =>
+      mappings && Object.values(mappings).some((cell) =>
+        typeof cell === 'string' && cell !== '' && !/^[A-Z]{1,3}[1-9]\d*$/.test(cell)
+      )
+    );
+    setCellMappingError(
+      hasInvalidCell ? 'Enter an Excel cell reference such as C5, or leave it blank.' : null
+    );
+
+    if (normalizedValue && !/^[A-Z]{1,3}[1-9]\d*$/.test(normalizedValue)) {
+      return;
+    }
+
+    const updated: DigitalTestSheetSettings = {
+      ...digitalTestSheetSettings,
+      cellMappings: {
+        ...digitalTestSheetSettings.cellMappings,
+        [selectedSystemFilter]: {
+          ...(digitalTestSheetSettings.cellMappings[selectedSystemFilter] || {}),
+          [field]: normalizedValue
+        }
+      }
+    };
+    setDigitalTestSheetSettings(updated);
+    try {
+      DigitalTestSheetSettingsService.save(updated);
+    } catch (error) {
+      setCellMappingError(
+        error instanceof Error ? error.message : 'Could not save the test sheet cell mappings.'
       );
     }
   };
@@ -172,6 +258,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
     if (window.confirm('Reset network share locations to factory defaults?')) {
       const defs = NetworkShareConfigService.resetToDefaults();
       setNetworkConfigs(defs);
+      setNetworkSaveLocation(NetworkShareConfigService.getNetworkSaveLocation(selectedSystemFilter));
       setMessage({
         type: 'success',
         text: 'All network share paths reset to default Renishaw server directories.'
@@ -383,6 +470,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
     // Select the new system
     setSelectedSystemFilter(name);
     setSelectedLocationId(updatedConfigs[name][0].id);
+    setNetworkSaveLocation(NetworkShareConfigService.getNetworkSaveLocation(name));
 
     setNewSystemInput('');
     setNewSystemDesc('');
@@ -547,7 +635,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
               >
                 <div>
                   <h4 className={`text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
-                    Save location
+                    Save local location
                   </h4>
                   <p className="mt-1 text-[11px] text-slate-400">
                     System folders and generated laser/grating files are saved here. Leave blank to
@@ -582,7 +670,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                     onClick={handleSaveLocation}
                     className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-500"
                   >
-                    Save location
+                    Save local location
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-400">
@@ -597,7 +685,39 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
           {/* TAB: EXCEL HUB & NETWORK SHARE LOCATIONS */}
           {activeTab === 'excel' && (
             <div className="space-y-4">
-              {/* System Selector for 3 locations per instrument */}
+              <section
+                className={`p-4 rounded-xl border space-y-3 ${
+                  isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-white border-slate-200'
+                }`}
+              >
+                <div>
+                  <h4 className="text-xs font-bold text-white">Network Save Location</h4>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Destination directory used to find or create the system folder for {selectedSystemFilter}.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="text"
+                    aria-label={`${selectedSystemFilter} network save location`}
+                    value={networkSaveLocation}
+                    onChange={(event) =>
+                      handleUpdateNetworkSaveLocation(selectedSystemFilter, event.target.value)
+                    }
+                    placeholder="Enter a local or UNC network folder path"
+                    className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-mono text-slate-100 focus:border-emerald-500 focus:outline-hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleBrowseNetworkSaveLocation}
+                    className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+                  >
+                    Browse…
+                  </button>
+                </div>
+              </section>
+
+              {/* System Selector for workbook source locations */}
               <div
                 className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                   isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-50 border-slate-200'
@@ -606,10 +726,10 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                 <div>
                   <div className="font-semibold text-xs text-slate-200 flex items-center gap-1.5">
                     <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Select Instrument System Locations</span>
+                    <span>Workbook Source Locations</span>
                   </div>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Configure UNC share paths (`\\renishaw.com\...`) for Master Test Sheets, Test Data Copies &amp; Deviation Records.
+                    Configure the source workbook paths for the selected instrument.
                   </p>
                 </div>
 
@@ -623,6 +743,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                         type="button"
                         onClick={() => {
                           setSelectedSystemFilter(sys);
+                          setNetworkSaveLocation(NetworkShareConfigService.getNetworkSaveLocation(sys));
                           const locs =
                             networkConfigs[sys] ||
                             NetworkShareConfigService.getLocationsForSystem(sys);
@@ -648,7 +769,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                 </div>
               </div>
 
-              {/* Network locations for the chosen system */}
+              {/* Workbook locations for the chosen system */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {activeSystemLocations.map((loc, idx) => {
                   const isSelected = loc.id === selectedLocationId;
@@ -679,16 +800,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                             {loc.category}
                           </span>
                         </div>
-                        <input
-                          type="text"
-                          value={loc.name}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) =>
-                            handleUpdateName(selectedSystemFilter, idx as 0 | 1 | 2, e.target.value)
-                          }
-                          className="font-semibold text-xs text-white bg-transparent border-b border-transparent hover:border-slate-600 focus:border-emerald-500 focus:outline-hidden w-full"
-                          title="Click to rename location"
-                        />
+                        <span className="font-semibold text-xs text-white">{loc.name}</span>
                         <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">
                           {loc.description}
                         </p>
@@ -723,13 +835,11 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                     <Folder className="w-4 h-4 text-amber-400" />
                     <div>
                       <h4 className="text-xs font-bold text-white">
-                        Network Share UNC Path:{' '}
+                        Workbook File Path:{' '}
                         <span className="text-emerald-400">{activeLocation.name}</span>
                       </h4>
                       <p className="text-[11px] text-slate-400">
-                        {activeLocation.category === 'Master Test Records'
-                          ? `Source folder containing both master record workbooks for ${selectedSystemFilter}`
-                          : `Target directory / spreadsheet path for ${selectedSystemFilter}`}
+                        {`Select or enter the full source workbook path for ${selectedSystemFilter}. The configured file name is used for the copied workbook.`}
                       </p>
                     </div>
                   </div>
@@ -772,22 +882,16 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                         handleUpdatePath(selectedSystemFilter, idx as 0 | 1 | 2, e.target.value);
                       }
                     }}
-                    placeholder={
-                      activeLocation.category === 'Master Test Records'
-                        ? 'Folder containing Test Acceptance Record.xlsm and Minor Deviation Record.xlsm'
-                        : '\\\\renishaw.com\\global\\gb\\PLC\\...'
-                    }
+                    placeholder="Full path including workbook file name, e.g. \\\\server\\share\\Master.xlsm"
                     className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-hidden focus:border-emerald-500"
                   />
-                  {activeLocation.category === 'Master Test Records' && (
-                    <button
-                      type="button"
-                      onClick={handleBrowseMasterRecordsFolder}
-                      className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
-                    >
-                      Browse…
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handleBrowseLocationFile}
+                    className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+                  >
+                    Browse…
+                  </button>
                 </div>
               </div>
 
@@ -804,7 +908,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <label className="space-y-1 text-[11px] text-slate-400">
-                    <span>Power Meter Serial Number (Virsa C5 / inLux E10)</span>
+                    <span>Power Meter Serial Number</span>
                     <input
                       type="text"
                       value={digitalTestSheetSettings.powerMeterSerialNumber}
@@ -815,7 +919,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                     />
                   </label>
                   <label className="space-y-1 text-[11px] text-slate-400">
-                    <span>Power Meter Head Serial Number (Virsa E5 / inLux G10)</span>
+                    <span>Power Meter Head Serial Number</span>
                     <input
                       type="text"
                       value={digitalTestSheetSettings.powerMeterHeadSerialNumber}
@@ -828,6 +932,46 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                 </div>
                 {virsaSettingsError && (
                   <p role="alert" className="text-xs text-rose-300">{virsaSettingsError}</p>
+                )}
+              </section>
+
+              <section
+                className={`p-4 rounded-xl border space-y-3 ${
+                  isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-white border-slate-200'
+                }`}
+              >
+                <div>
+                  <h4 className="text-xs font-bold text-white">Digital Test Sheet Cell Locations</h4>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Set the destination cell for each value written to {selectedSystemFilter} workbooks. Leave a field blank to skip it.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {([
+                    ['jobNumber', 'Job Number'],
+                    ['customerName', 'Customer Name'],
+                    ['partNumber', 'Part Number'],
+                    ['serialNumber', 'Serial Number'],
+                    ['powerMeterSerialNumber', 'Power Meter Serial Number'],
+                    ['powerMeterHeadSerialNumber', 'Power Meter Head Serial Number']
+                  ] as const).map(([field, label]) => (
+                    <label key={field} className="space-y-1 text-[11px] text-slate-400">
+                      <span>{label}</span>
+                      <input
+                        type="text"
+                        aria-label={`${selectedSystemFilter} ${label} cell`}
+                        value={
+                          cellMappingDraft[selectedSystemFilter]?.[field] || ''
+                        }
+                        onChange={(event) => handleUpdateCellMapping(field, event.target.value)}
+                        placeholder="e.g. C5"
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-mono text-slate-100 focus:border-emerald-500 focus:outline-hidden"
+                      />
+                    </label>
+                  ))}
+                </div>
+                {cellMappingError && (
+                  <p role="alert" className="text-xs text-rose-300">{cellMappingError}</p>
                 )}
               </section>
 

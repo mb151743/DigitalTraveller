@@ -33,6 +33,18 @@ export interface DigitalTestSheetMetadata {
   powerMeterHeadSerialNumber: string;
 }
 
+export type DigitalTestSheetField =
+  | 'jobNumber'
+  | 'customerName'
+  | 'partNumber'
+  | 'serialNumber'
+  | 'powerMeterSerialNumber'
+  | 'powerMeterHeadSerialNumber';
+
+export type DigitalTestSheetCellMappings = Partial<Record<DigitalTestSheetField, string>>;
+
+export type DigitalTestSheetCellMappingsBySystem = Record<string, DigitalTestSheetCellMappings>;
+
 export interface MotorScanEntry {
   motorName: string;
   instruction: string;
@@ -73,7 +85,6 @@ export interface TravellerRecord {
   id: string;
   serialNumber: string;
   system: SystemType;
-  workOrderNumber: string;
   customerName?: string;
   jobNumber?: string;
   partNumber?: string;

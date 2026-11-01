@@ -40,7 +40,7 @@ The application features a built-in **Excel Hub** (accessed via the top title ba
 
 ### Features:
 - **Direct Multi-Sheet Excel Export**: Generates `.xlsx` files with sheets for:
-  - **Overview**: System model, S/N, Work Order, Customer, Job, and Part Number.
+  - **Overview**: System model, S/N, Customer, Job, and Part Number.
   - **Workflow Steps**: Full procedure names, statuses, assigned technician, timestamps, and notes.
   - **Measurements**: Recorded laser powers, tolerances, wavelength checks, and pass/fail statuses.
   - **Checklists**: Quality checklist verification items.
@@ -54,24 +54,24 @@ In the **Calibration** stage, enter each laser wavelength and grating density co
 
 ### Digital Test Sheets
 
-The **Create Test Sheets** step follows **Select Laser and Grating Combinations**. It copies the configured read-only master workbook from **Settings → Network Shares → Master Test Sheet** into the system folder created by **Create System Folders**, under `Internal data\Digital Test Sheets`. The master workbook is never edited.
+The **Create Test Sheets** step follows **Select Laser and Grating Combinations**. It copies the configured read-only master workbook from **Settings → Excel Hub & Network Shares → Location 1** into the system folder created by **Create System Folders**, under `Internal data\Digital Test Sheets`. The master workbook is never edited.
 
-- **inLux** creates one file named `<Serial Number>_inLux Test Sheet PT-70151.xlsm`.
+- **inLux** creates one file named `<Serial Number>_<Master Sheet File Name>`.
 - **Virsa** and **inVia** create one copy per selected combination. Each file is named `<Serial Number>_<Wavelength>nm_<Grating>_<Master Sheet File Name>`.
-- For **inVia**, each copy is populated with Job Number (C3), Customer Name (E3), and Serial Number (H3).
-- For **Virsa**, each copy is populated with Job Number (C2), Customer Name (E2), Part Number (G2), Serial Number (I2), Power Meter Serial Number (C5), and Power Meter Head Serial Number (E5). Missing values are requested before copying. The power meter serial numbers are configurable and saved in Settings for reuse.
-- For **inLux**, the single copy is populated with Customer Name (C2), Job Number (C3), Serial Number (F3), Power Meter Serial Number (E10), and Power Meter Head Serial Number (G10). Missing values are requested before copying. Its meter serial numbers use the same saved Settings defaults.
-- The step also copies the configured system-specific `Test Acceptance Record.xlsm` and `Minor Deviation Record.xlsm` master files from the **Master Test Acceptance & Minor Deviation Records** folder in Settings into the root of the system folder. The source folder may use the generic filenames or system-prefixed filenames. These copies are not edited during this step.
+- Each test-sheet value is populated at its configured cell location. The default locations match the current inVia, Virsa, and inLux sheets and can be changed per system in **Settings → Excel Hub & Network Shares → Digital Test Sheet Cell Locations**. Power meter serial numbers are also configurable and saved in Settings.
+- The step copies the individually configured **Test Acceptance Record** and **Minor Deviation Log** workbook files (Locations 2 and 3) into the root of the system folder. Settings stores each full source path, including the workbook file name, so renamed master files can be configured without changing the app.
+
+The **Network Save Location** is configured per system in the Excel Hub settings. The **Local Save Location** is in **Settings → File Storage**; these paths and workbook source paths are retained with the other application settings.
 
 If any destination file already exists, the app asks before replacing it. This operation is available in the Windows desktop app.
 
 ### Network Save Location and Motor Scan
 
-The **Update Network Save Location** step searches the configured **Test Data Copies** network root for an existing system folder matching the traveller's Part Number and Customer Name. A matching folder is renamed to `<Serial Number>_<Part Number>_<Customer Name>`; if none exists, the correctly named folder is created. The step displays and records the child folder names it finds. If multiple folders match, the operator must resolve the ambiguity before continuing.
+The **Update Network Save Location** step searches the configured per-system network save location for an existing system folder matching the traveller's Part Number and Customer Name. A matching folder is renamed to `<Serial Number>_<Part Number>_<Customer Name>`; if none exists, the correctly named folder is created. The step displays and records the child folder names it finds. If multiple folders match, the operator must resolve the ambiguity before continuing.
 
 The **Pre System Test** step provides motor entries for the operator to record each motor, its instruction, and its test result, then saves them in a timestamped text file in the resolved network system folder. Motor discovery is currently manual; automatic controller scanning is not configured.
 
-The **Rayleigh Cut-off Filter Calibration**, **CCD Detector Cooling & Dark Count Test**, **Laser Beam Alignment & Safety Interlocks**, and **Grating Turret & Slit Alignment** workflow steps appear in the **Calibration** stage.
+The **Silicon Internal Reference Standard 520.7 cm⁻¹**, **Laser Beam Alignment & Safety Interlocks**, and **Grating Turret & Slit Alignment** workflow steps follow the first seven steps in **Set Up**. The **Rayleigh Cut-off Filter Calibration** and **CCD Detector Cooling & Dark Count Test** steps remain in **Calibration**.
 
 ### WiRE Keys and System Details
 

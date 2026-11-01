@@ -4,6 +4,7 @@ import {
   SystemFolderResult,
   TestSheetResult,
   DigitalTestSheetMetadata,
+  DigitalTestSheetCellMappings,
   NetworkSaveLocationOperationResult,
   MotorScanEntry,
   MotorScanSaveResult
@@ -64,11 +65,13 @@ declare global {
         customerName: string,
         saveLocation: string,
         masterTemplatePath: string,
-        masterRecordTemplatesFolder: string,
+        testAcceptanceRecordPath: string,
+        minorDeviationLogPath: string,
         systemFolderPath: string | undefined,
         combinations: LaserGratingCombination[],
         overwrite: boolean,
-        testSheetMetadata?: DigitalTestSheetMetadata
+        testSheetMetadata?: DigitalTestSheetMetadata,
+        cellMappings?: DigitalTestSheetCellMappings
       ) => Promise<TestSheetResult>;
       updateNetworkSaveLocation: (
         serialNumber: string,
@@ -90,6 +93,7 @@ declare global {
         | { success: true }
         | { success: false; error: string };
       selectNetworkDirectory: () => Promise<string | null>;
+      selectNetworkFile: () => Promise<string | null>;
       searchCleanupFolders: () => Promise<CleanupResult<CleanupFolder[]>>;
       searchArchiveSystemResults: () => Promise<CleanupResult<CleanupFolder[]>>;
       archiveSystemResults: (paths: string[]) => Promise<CleanupResult<string[]>>;

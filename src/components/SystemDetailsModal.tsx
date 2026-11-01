@@ -165,10 +165,6 @@ function SystemDetailsModalContent({
                   <td className="px-3 py-1.5"><input aria-label="Job Number" className={textInputClass} value={jobNumber} onChange={(event) => setJobNumber(event.target.value)} /></td>
                 </tr>
                 <tr>
-                  <td className="px-3 py-2 text-slate-300">Work Order Number</td>
-                  <td className="px-3 py-2">{traveller.workOrderNumber || 'Not recorded'}</td>
-                </tr>
-                <tr>
                   <td className="px-3 py-2 text-slate-300"><KeyRound className="mr-2 inline h-3.5 w-3.5 text-indigo-400" />WiRE Key</td>
                   <td className="px-3 py-2 break-all font-mono text-emerald-300">{getSavedWireKey(traveller) || 'Not recorded'}</td>
                 </tr>

@@ -10,7 +10,6 @@ interface SystemSelectorProps {
   customerName?: string;
   jobNumber?: string;
   partNumber?: string;
-  workOrderNumber: string;
   operatorName: string;
   isAdmin: boolean;
   theme?: 'dark' | 'light';
@@ -23,7 +22,6 @@ export const SystemSelector: React.FC<SystemSelectorProps> = ({
   customerName,
   jobNumber,
   partNumber,
-  workOrderNumber,
   operatorName,
   isAdmin,
   theme = 'dark',

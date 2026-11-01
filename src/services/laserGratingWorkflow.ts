@@ -19,6 +19,11 @@ export const SAVE_WIRE_PASSWORDS_STEP_INSTRUCTIONS = [
   'Record the system WiRE passwords in System Details.'
 ];
 export const SYSTEM_FOLDERS_STEP_NAME = 'Create System Folders';
+export const SETUP_STEPS_AFTER_SYSTEM_FOLDERS = [
+  'Silicon Internal Reference Standard 520.7 cm⁻¹',
+  'Laser Beam Alignment & Safety Interlocks',
+  'Grating Turret & Slit Alignment'
+] as const;
 export const LASER_GRATING_FILES_SAVE_INSTRUCTION =
   'Files are saved in the configured system folder under Internal data/Extra Data.';
 export const SYSTEM_FOLDERS_STEP_INSTRUCTIONS = [

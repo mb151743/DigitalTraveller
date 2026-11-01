@@ -109,7 +109,7 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
       },
       {
         name: 'Silicon Internal Reference Standard 520.7 cm⁻¹',
-        stage: 'Calibration',
+        stage: 'Set Up',
         instructions: [
           'Load Renishaw certified Silicon (100) reference wafer on motorized XYZ stage.',
           'Execute automated peak center fit on the 520.7 cm⁻¹ first-order optical phonon.',
@@ -127,7 +127,7 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
       },
       {
         name: 'Laser Beam Alignment & Safety Interlocks',
-        stage: 'Calibration',
+        stage: 'Set Up',
         instructions: [
           'Mount primary 532 nm excitation laser and secure beam steering optics.',
           'Align beam onto entrance pinhole with target quadrant detector.',
@@ -144,7 +144,7 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
       },
       {
         name: 'Grating Turret & Slit Alignment',
-        stage: 'Calibration',
+        stage: 'Set Up',
         instructions: [
           'Mount 1800 l/mm and 2400 l/mm holographic gratings.',
           'Initialize stepper motor home positions and verify zero-order retroreflection.'

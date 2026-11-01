@@ -43,6 +43,7 @@ import {
   SYSTEM_UNBOXING_STEP_NAME,
   SYSTEM_FOLDERS_STEP_NAME,
   SYSTEM_FOLDERS_STEP_INSTRUCTIONS,
+  SETUP_STEPS_AFTER_SYSTEM_FOLDERS,
   CREATE_TEST_SHEETS_STEP_NAME,
   CREATE_TEST_SHEETS_STEP_INSTRUCTIONS,
   LASER_GRATING_SELECTION_STEP_NAME,
@@ -584,7 +585,10 @@ export const App: React.FC = () => {
       ).map((s) => {
         let stage = s.stage === 'Setup' ? 'Set Up' : s.stage;
         if (s.name === 'Laser Beam Alignment & Safety Interlocks' || s.name === 'Grating Turret & Slit Alignment') {
-          stage = 'Calibration';
+          stage = 'Set Up';
+        }
+        if (s.name === 'Silicon Internal Reference Standard 520.7 cm⁻¹') {
+          stage = 'Set Up';
         }
         if (s.name === 'Rayleigh Cut-off Filter Calibration' || s.name === 'CCD Detector Cooling & Dark Count Test') {
           stage = 'Calibration';
@@ -592,7 +596,14 @@ export const App: React.FC = () => {
         return { ...s, stage };
       });
 
-      const setUpOthers = otherSteps.filter((s) => s.stage === 'Set Up');
+      const movedSetupSteps = SETUP_STEPS_AFTER_SYSTEM_FOLDERS.flatMap((name) => {
+        const step = otherSteps.find((item) => item.name === name);
+        return step ? [{ ...step, stage: 'Set Up' }] : [];
+      });
+      const setUpOthers = otherSteps.filter((s) =>
+        s.stage === 'Set Up' &&
+        !SETUP_STEPS_AFTER_SYSTEM_FOLDERS.some((name) => name === s.name)
+      );
       const calibOthers = otherSteps.filter((s) => s.stage === 'Calibration');
       const restOthers = otherSteps.filter((s) => s.stage !== 'Set Up' && s.stage !== 'Calibration');
 
@@ -604,6 +615,7 @@ export const App: React.FC = () => {
         { ...saveWirePasswordsStep, stage: 'Set Up' },
         { ...networkSaveLocationStep, stage: 'Set Up' },
         { ...folderStep, stage: 'Set Up' },
+        ...movedSetupSteps,
         ...setUpOthers,
         ...calibOthers,
         ...restOthers
@@ -848,9 +860,7 @@ export const App: React.FC = () => {
         };
       }
 
-      const configuredLocation = NetworkShareConfigService
-        .getLocationsForSystem(traveller.system)
-        .find((location) => location.category === 'Test Data Copies')?.path || '';
+      const configuredLocation = NetworkShareConfigService.getNetworkSaveLocation(traveller.system);
       return updateLocation(
         traveller.serialNumber,
         traveller.partNumber || '',
@@ -913,13 +923,17 @@ export const App: React.FC = () => {
         error: `Configure the ${traveller.system} master test sheet path in Settings.`
       };
     }
-    const masterRecordsFolder = NetworkShareConfigService
-      .getLocationsForSystem(traveller.system)
-      .find((location) => location.category === 'Master Test Records');
-    if (typeof masterRecordsFolder?.path !== 'string' || !masterRecordsFolder.path.trim()) {
+    const locations = NetworkShareConfigService.getLocationsForSystem(traveller.system);
+    const testAcceptanceRecord = locations.find(
+      (location) => location.category === 'Test Acceptance Record'
+    );
+    const minorDeviationLog = locations.find(
+      (location) => location.category === 'Minor Deviation Log'
+    );
+    if (!testAcceptanceRecord?.path.trim() || !minorDeviationLog?.path.trim()) {
       return {
         success: false,
-        error: `Configure the ${traveller.system} Master Test Acceptance & Minor Deviation Records folder in Settings.`
+        error: `Configure the ${traveller.system} Test Acceptance Record and Minor Deviation Log workbook paths in Settings.`
       };
     }
 
@@ -930,11 +944,13 @@ export const App: React.FC = () => {
       traveller.customerName || '',
       StorageService.getSaveLocation(),
       masterSheet.path,
-      masterRecordsFolder.path,
+      testAcceptanceRecord.path,
+      minorDeviationLog.path,
       traveller.networkSystemFolderPath,
       traveller.laserGratingCombinations || [],
       overwrite,
-      testSheetMetadata
+      testSheetMetadata,
+      DigitalTestSheetSettingsService.getCellMappings(traveller.system)
     );
     if (result.success) {
       const recordsFile = result.files[result.files.length - 2];

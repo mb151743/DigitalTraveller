@@ -45,20 +45,20 @@ function normalizeTestSheetMetadata(
 }
 
 const INLUX_TEST_SHEET_FIELDS: Array<[keyof DigitalTestSheetMetadata, string]> = [
-  ['customerName', 'Customer Name (C2)'],
-  ['jobNumber', 'Job Number (C3)'],
-  ['serialNumber', 'Serial Number (F3)'],
-  ['powerMeterSerialNumber', 'Power Meter S/N (E10)'],
-  ['powerMeterHeadSerialNumber', 'Power Meter Head S/N (G10)']
+  ['customerName', 'Customer Name'],
+  ['jobNumber', 'Job Number'],
+  ['serialNumber', 'Serial Number'],
+  ['powerMeterSerialNumber', 'Power Meter S/N'],
+  ['powerMeterHeadSerialNumber', 'Power Meter Head S/N']
 ];
 
 const VIRSA_TEST_SHEET_FIELDS: Array<[keyof DigitalTestSheetMetadata, string]> = [
-  ['jobNumber', 'Job Number (C2)'],
-  ['customerName', 'Customer Name (E2)'],
-  ['partNumber', 'Part Number (G2)'],
-  ['serialNumber', 'Serial Number (I2)'],
-  ['powerMeterSerialNumber', 'Power Meter S/N (C5)'],
-  ['powerMeterHeadSerialNumber', 'Power Meter Head S/N (E5)']
+  ['jobNumber', 'Job Number'],
+  ['customerName', 'Customer Name'],
+  ['partNumber', 'Part Number'],
+  ['serialNumber', 'Serial Number'],
+  ['powerMeterSerialNumber', 'Power Meter S/N'],
+  ['powerMeterHeadSerialNumber', 'Power Meter Head S/N']
 ];
 
 const INLUX_REQUIRED_TEST_SHEET_FIELDS: Array<keyof DigitalTestSheetMetadata> = [
@@ -113,7 +113,9 @@ interface StepDialogProps {
     testSheetMetadata?: DigitalTestSheetMetadata
   ) => Promise<TestSheetResult>;
   digitalTestSheetSettings: DigitalTestSheetSettings;
-  onSaveDigitalTestSheetSettings: (settings: DigitalTestSheetSettings) => void;
+  onSaveDigitalTestSheetSettings: (
+    settings: Pick<DigitalTestSheetSettings, 'powerMeterSerialNumber' | 'powerMeterHeadSerialNumber'>
+  ) => void;
 }
 
 export const StepDialog: React.FC<StepDialogProps> = (props) => {
@@ -553,6 +555,10 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   const testSheetFields = system === 'inLux'
     ? INLUX_TEST_SHEET_FIELDS
     : VIRSA_TEST_SHEET_FIELDS;
+  const testSheetFieldsWithCells = testSheetFields.map(([field, label]) => {
+    const cell = digitalTestSheetSettings.cellMappings[system]?.[field];
+    return [field, cell ? `${label} (${cell})` : label] as const;
+  });
 
   return (
     <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150 ${theme === 'light' ? 'step-dialog-light' : ''}`}>
@@ -1071,7 +1077,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
               Enter the missing details. Power meter serial numbers will be saved in Settings for future sheets.
             </p>
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {testSheetFields.map(([field, label]) => (
+              {testSheetFieldsWithCells.map(([field, label]) => (
                 <label key={field} className="space-y-1 text-[11px] text-slate-300">
                   <span>{label}</span>
                   <input

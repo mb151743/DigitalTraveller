@@ -5,7 +5,7 @@ export class ExcelService {
   /**
    * Export the entire digital traveller record into a formatted Excel workbook (.xlsx).
    * Generates sheets for:
-   * 1. Overview: System model, S/N, Work Order, Customer, Job, Part, Operator, Timestamps.
+   * 1. Overview: System model, S/N, Customer, Job, Part, Operator, Timestamps.
    * 2. Workflow Steps: Stage, Step Name, Status, Technician, Started, Completed, Notes.
    * 3. Measurements & Tolerances: Stage, Step, Parameter, Recorded Value, Unit, Tolerance, Status.
    * 4. Checklists: Stage, Step, Item, Done (YES/NO).
@@ -21,7 +21,6 @@ export class ExcelService {
       ['Field', 'Value'],
       ['System Model', record.system],
       ['Serial Number', record.serialNumber || 'Unassigned'],
-      ['Work Order Number', record.workOrderNumber],
       ['Customer Name', record.customerName || 'N/A'],
       ['Job Number', record.jobNumber || 'N/A'],
       ['Part Number', record.partNumber || 'N/A'],

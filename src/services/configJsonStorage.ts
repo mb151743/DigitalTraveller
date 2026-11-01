@@ -5,6 +5,7 @@ const CONFIG_SETTING_KEYS = new Set([
   'digital_traveller_last_tech',
   'digital_traveller_save_location',
   'digital_traveller_network_share_configs_v2',
+  'digital_traveller_network_save_locations_v1',
   'digital_traveller_virsa_test_sheet_settings_v1',
   'digital_traveller_registered_systems_v1',
   'digital_traveller_network_share_path'

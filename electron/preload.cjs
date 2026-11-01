@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('desktopAPI', {
   readNetworkFile: (filePath) => ipcRenderer.invoke('read-network-file', filePath),
   writeNetworkFile: (filePath, data) => ipcRenderer.invoke('write-network-file', { filePath, data }),
   selectNetworkDirectory: () => ipcRenderer.invoke('select-network-directory'),
+  selectNetworkFile: () => ipcRenderer.invoke('select-network-file'),
   createSystemFolders: (serialNumber, partNumber, customerName, saveLocation, systemFolderPath) =>
     ipcRenderer.invoke('create-system-folders', {
       serialNumber,
@@ -25,11 +26,13 @@ contextBridge.exposeInMainWorld('desktopAPI', {
     customerName,
     saveLocation,
     masterTemplatePath,
-    masterRecordTemplatesFolder,
+    testAcceptanceRecordPath,
+    minorDeviationLogPath,
     systemFolderPath,
     combinations,
     overwrite,
-    testSheetMetadata
+    testSheetMetadata,
+    cellMappings
   ) => ipcRenderer.invoke('create-test-sheets', {
     system,
     serialNumber,
@@ -37,11 +40,13 @@ contextBridge.exposeInMainWorld('desktopAPI', {
     customerName,
     saveLocation,
     masterTemplatePath,
-    masterRecordTemplatesFolder,
+    testAcceptanceRecordPath,
+    minorDeviationLogPath,
     systemFolderPath,
     combinations,
     overwrite,
-    testSheetMetadata
+    testSheetMetadata,
+    cellMappings
   }),
   updateNetworkSaveLocation: (serialNumber, partNumber, customerName, configuredLocation) =>
     ipcRenderer.invoke('update-network-save-location', {

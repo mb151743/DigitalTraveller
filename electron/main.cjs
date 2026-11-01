@@ -329,6 +329,17 @@ ipcMain.handle('select-network-directory', async (event) => {
   return result.filePaths[0];
 });
 
+ipcMain.handle('select-network-file', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'Excel workbooks', extensions: ['xlsm', 'xlsx', 'xls'] }]
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+  return result.filePaths[0];
+});
+
 function getSystemDirectory(request) {
   const validateSegment = (value, label) => {
     const segment = typeof value === 'string' ? value.trim() : '';
@@ -387,7 +398,7 @@ function validatePathSegment(value, label) {
 function getConfiguredNetworkSystemRoot(configuredLocation) {
   if (typeof configuredLocation !== 'string' || !configuredLocation.trim() ||
       !path.isAbsolute(configuredLocation.trim())) {
-    throw new Error('Configure an absolute Test Data Copies network location in Settings.');
+    throw new Error('Configure an absolute Network Save Location in Settings.');
   }
 
   let root = path.resolve(configuredLocation.trim());
@@ -408,7 +419,7 @@ ipcMain.handle('update-network-save-location', async (event, request) => {
     const configuredRoot = getConfiguredNetworkSystemRoot(request?.configuredLocation);
     const rootStats = await fs.promises.stat(configuredRoot);
     if (!rootStats.isDirectory()) {
-      throw new Error('The configured Test Data Copies location is not a folder.');
+      throw new Error('The configured Network Save Location is not a folder.');
     }
 
     const expectedName = `${serialNumber}_${partNumber}_${customerName}`;
@@ -546,30 +557,47 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
       return { success: false, error: 'The configured master test sheet is not a file.' };
     }
 
-    const masterRecordTemplatesFolder =
-      typeof request?.masterRecordTemplatesFolder === 'string'
-        ? request.masterRecordTemplatesFolder.trim()
-        : '';
-    if (!masterRecordTemplatesFolder || !path.isAbsolute(masterRecordTemplatesFolder)) {
+    const testAcceptanceRecordPath = typeof request?.testAcceptanceRecordPath === 'string'
+      ? request.testAcceptanceRecordPath.trim()
+      : '';
+    const minorDeviationLogPath = typeof request?.minorDeviationLogPath === 'string'
+      ? request.minorDeviationLogPath.trim()
+      : '';
+    if (
+      !testAcceptanceRecordPath ||
+      !path.isAbsolute(testAcceptanceRecordPath) ||
+      !minorDeviationLogPath ||
+      !path.isAbsolute(minorDeviationLogPath)
+    ) {
       return {
         success: false,
-        error: `Configure the ${request.system} Master Test Acceptance & Minor Deviation Records folder in Settings.`
+        error: 'Configure absolute paths for the Test Acceptance Record and Minor Deviation Log files in Settings.'
       };
     }
-    const recordFolderStats = await fs.promises.stat(masterRecordTemplatesFolder);
-    if (!recordFolderStats.isDirectory()) {
-      return { success: false, error: 'The configured master test records location is not a folder.' };
-    }
+
     const systemRecordPrefix = system === 'inlux' ? 'inLux' : system === 'invia' ? 'InVia' : 'VIRSA';
-    const recordSourceCandidates = [
-      ['Test Acceptance Record.xlsm', `${systemRecordPrefix} Test Acceptance Record.xlsm`],
-      ['Minor Deviation Record.xlsm', `${systemRecordPrefix} Minor Deviation Record.xlsm`]
+    const configuredRecordPaths = [
+      {
+        path: testAcceptanceRecordPath,
+        fallbackNames: [`${systemRecordPrefix} Test Acceptance Record.xlsm`]
+      },
+      {
+        path: minorDeviationLogPath,
+        fallbackNames: [
+          'Minor Deviation Record.xlsm',
+          `${systemRecordPrefix} Minor Deviation Record.xlsm`,
+          `${systemRecordPrefix} Minor Deviation Log.xlsm`
+        ]
+      }
     ];
     const masterRecordPaths = [];
-    for (const candidates of recordSourceCandidates) {
+    for (const record of configuredRecordPaths) {
+      const candidates = [
+        record.path,
+        ...record.fallbackNames.map((name) => path.join(path.dirname(record.path), name))
+      ];
       let masterRecordPath = '';
-      for (const fileName of candidates) {
-        const candidatePath = path.join(masterRecordTemplatesFolder, fileName);
+      for (const candidatePath of candidates) {
         try {
           const recordStats = await fs.promises.stat(candidatePath);
           if (recordStats.isFile()) {
@@ -583,7 +611,7 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
       if (!masterRecordPath) {
         return {
           success: false,
-          error: `The configured master test records folder is missing ${candidates.join(' or ')}.`
+          error: `The configured master record file was not found: ${record.path}`
         };
       }
       masterRecordPaths.push(masterRecordPath);
@@ -640,7 +668,7 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
 
     const targetNames = [];
     if (system === 'inlux') {
-      targetNames.push(`${serialNumber}_inLux Test Sheet PT-70151.xlsm`);
+      targetNames.push(`${serialNumber}_${path.basename(masterTemplatePath)}`);
     } else {
       if (!Array.isArray(request?.combinations) || request.combinations.length === 0) {
         return { success: false, error: 'Add at least one laser and grating combination first.' };
@@ -670,8 +698,8 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
       (name) => path.join(targetDirectory, name)
     );
     const recordTargetPaths = [
-      path.join(systemDirectory, 'Test Acceptance Record.xlsm'),
-      path.join(systemDirectory, 'Minor Deviation Record.xlsm')
+      path.join(systemDirectory, path.basename(masterRecordPaths[0])),
+      path.join(systemDirectory, path.basename(masterRecordPaths[1]))
     ];
     const targetPaths = [...testSheetTargetPaths, ...recordTargetPaths];
     const masterPaths = [masterTemplatePath, ...masterRecordPaths]
@@ -682,6 +710,31 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
       return {
         success: false,
         error: 'A configured master test workbook cannot also be used as a destination file.'
+      };
+    }
+
+    const cellMappings = request?.cellMappings;
+    const allowedFields = [
+      'jobNumber',
+      'customerName',
+      'partNumber',
+      'serialNumber',
+      'powerMeterSerialNumber',
+      'powerMeterHeadSerialNumber'
+    ];
+    if (
+      !cellMappings ||
+      typeof cellMappings !== 'object' ||
+      Array.isArray(cellMappings) ||
+      Object.entries(cellMappings).some(([field, cell]) =>
+        !allowedFields.includes(field) ||
+        typeof cell !== 'string' ||
+        (cell !== '' && !/^[A-Z]{1,3}[1-9]\d*$/i.test(cell))
+      )
+    ) {
+      return {
+        success: false,
+        error: 'Test sheet cell mappings in Settings must use valid Excel cell references.'
       };
     }
 
@@ -730,7 +783,8 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
           (testSheetMetadata.partNumber || '').trim(),
           (testSheetMetadata.serialNumber || request.serialNumber || '').trim(),
           (testSheetMetadata.powerMeterSerialNumber || '').trim(),
-          (testSheetMetadata.powerMeterHeadSerialNumber || '').trim()
+          (testSheetMetadata.powerMeterHeadSerialNumber || '').trim(),
+          JSON.stringify(cellMappings)
         ]);
       }
       files.push(targetPath);

@@ -280,10 +280,7 @@ export const StepList: React.FC<StepListProps> = ({
               )}
 
               <div
-                draggable={isAdmin}
-                onDragStart={(e) => handleDragStart(e, step, index)}
                 onDragOver={(e) => handleDragOver(e, step.id)}
-                onDragEnd={handleDragEnd}
                 onDrop={(e) => handleDrop(e, step.id)}
                 onClick={() => onSelectStep(step)}
                 className={`w-full text-left p-3 rounded-lg border transition-all flex items-start justify-between gap-2.5 group cursor-pointer ${
@@ -306,6 +303,12 @@ export const StepList: React.FC<StepListProps> = ({
                   {/* Admin drag grip handle */}
                   {isAdmin && (
                     <div
+                      draggable
+                      onDragStart={(event) => {
+                        event.stopPropagation();
+                        handleDragStart(event, step, index);
+                      }}
+                      onDragEnd={handleDragEnd}
                       className="cursor-grab active:cursor-grabbing text-slate-500 hover:text-amber-400 p-0.5 mt-0.5 flex-shrink-0"
                       title="Click and drag to reorder"
                     >
