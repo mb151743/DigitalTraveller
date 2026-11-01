@@ -1,5 +1,7 @@
 const CONFIG_SETTING_KEYS = new Set([
   'digital_traveller_theme',
+  'digital_traveller_color_scheme',
+  'digital_traveller_logo_image',
   'digital_traveller_left_pane_width',
   'digital_traveller_technicians',
   'digital_traveller_last_tech',

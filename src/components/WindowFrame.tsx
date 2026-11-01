@@ -6,6 +6,7 @@ interface WindowFrameProps {
   system: SystemType;
   serialNumber: string;
   version?: string;
+  logoImage?: string;
   theme: 'dark' | 'light';
   isAdmin?: boolean;
   children: React.ReactNode;
@@ -30,7 +31,8 @@ const desktop = () => (window as any).desktopAPI as
 export const WindowFrame: React.FC<WindowFrameProps> = ({
   system,
   serialNumber,
-  version = 'v1.0.8',
+  version = 'v1.0.9',
+  logoImage = '',
   theme,
   isAdmin = false,
   children,
@@ -220,6 +222,13 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
         {children}
+
+        <img
+          src={logoImage || '/assets/Renishaw_PRIMARYandSL_orange_black_RGB.png'}
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute bottom-8 right-3 z-10 max-h-14 w-[25%] max-w-48 object-contain object-right opacity-25"
+        />
 
         {/* Version number positioned in bottom right */}
         <div className={`absolute bottom-1.5 right-3 text-[14px] font-mono pointer-events-none select-none z-10 ${

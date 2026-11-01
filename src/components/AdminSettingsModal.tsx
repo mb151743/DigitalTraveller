@@ -14,7 +14,8 @@ import {
   RotateCcw,
   Plus,
   Boxes,
-  FileText
+  FileText,
+  Palette
 } from 'lucide-react';
 import { SystemType, TravellerRecord, WorkflowStep } from '../types/traveller';
 import { WorkflowTemplateService, WorkflowTemplate } from '../services/workflowTemplateService';
@@ -36,7 +37,11 @@ interface AdminSettingsModalProps {
   system: SystemType;
   traveller: TravellerRecord;
   theme?: 'dark' | 'light';
-  initialTab?: 'excel' | 'workflows' | 'systems' | 'storage';
+  initialTab?: 'excel' | 'workflows' | 'systems' | 'storage' | 'appearance';
+  colorScheme: 'standard' | 'monochrome' | 'orange';
+  onChangeColorScheme: (scheme: 'standard' | 'monochrome' | 'orange') => void;
+  logoImage: string;
+  onChangeLogoImage: (image: string) => void;
   onClose: () => void;
   onApplyWorkflows: (newStages: string[], newSteps: WorkflowStep[]) => void;
   onUpdateTravellerFromExcel?: (updated: TravellerRecord, message: string) => void;
@@ -49,6 +54,10 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
   traveller,
   theme = 'dark',
   initialTab = 'excel',
+  colorScheme,
+  onChangeColorScheme,
+  logoImage,
+  onChangeLogoImage,
   onClose,
   onApplyWorkflows,
   onUpdateTravellerFromExcel,
@@ -56,7 +65,9 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const [activeTab, setActiveTab] = useState<'excel' | 'workflows' | 'systems' | 'storage'>(initialTab);
+  const [activeTab, setActiveTab] = useState<
+    'excel' | 'workflows' | 'systems' | 'storage' | 'appearance'
+  >(initialTab);
   const [registeredSystems, setRegisteredSystems] = useState<string[]>(() =>
     SystemRegistryService.getSystems()
   );
@@ -85,9 +96,11 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
   );
   const [virsaSettingsError, setVirsaSettingsError] = useState<string | null>(null);
   const [cellMappingError, setCellMappingError] = useState<string | null>(null);
+  const [logoError, setLogoError] = useState<string | null>(null);
 
   const multiWorkflowFileInputRef = useRef<HTMLInputElement>(null);
   const excelSyncInputRef = useRef<HTMLInputElement>(null);
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
 
   const isDark = theme === 'dark';
 
@@ -112,6 +125,37 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
   const handleUpdatePath = (sys: SystemType, index: 0 | 1 | 2, newPath: string) => {
     const updated = NetworkShareConfigService.updateLocation(sys, index, { path: newPath });
     setNetworkConfigs({ ...updated });
+  };
+
+  const handleLogoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    event.target.value = '';
+    if (!file.type.startsWith('image/')) {
+      setLogoError('Choose an image file.');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setLogoError('Choose an image smaller than 2 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => setLogoError('Could not read the selected image.');
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        setLogoError('Could not read the selected image.');
+        return;
+      }
+      try {
+        onChangeLogoImage(reader.result);
+        setLogoError(null);
+      } catch (error) {
+        setLogoError(
+          error instanceof Error ? error.message : 'Could not save the selected image.'
+        );
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleUpdateNetworkSaveLocation = (sys: SystemType, location: string) => {
@@ -595,6 +639,21 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
               <Folder className="w-3.5 h-3.5" />
               <span>File Storage</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('appearance')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all ${
+                activeTab === 'appearance'
+                  ? 'bg-orange-600 text-white shadow-xs'
+                  : isDark
+                  ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+              }`}
+            >
+              <Palette className="w-3.5 h-3.5" />
+              <span>Appearance</span>
+            </button>
           </div>
 
           <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/30">
@@ -623,6 +682,107 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
               )}
               <span>{message.text}</span>
+            </div>
+          )}
+
+          {activeTab === 'appearance' && (
+            <div className="space-y-4">
+              <section
+                className={`space-y-3 rounded-xl border p-4 ${
+                  isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-50 border-slate-200'
+                }`}
+              >
+                <div>
+                  <h4 className={`text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
+                    Colour theme
+                  </h4>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Choose the standard dark/light theme, a monochrome black-and-white theme, or an orange-accented theme.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {([
+                    ['standard', 'Current theme', 'Uses the existing Dark / Light switch.'],
+                    ['monochrome', 'Black & White', 'A grayscale high-contrast palette.'],
+                    ['orange', 'Orange', 'Dark surfaces with Renishaw orange accents.']
+                  ] as const).map(([scheme, label, description]) => (
+                    <button
+                      key={scheme}
+                      type="button"
+                      aria-pressed={colorScheme === scheme}
+                      onClick={() => onChangeColorScheme(scheme)}
+                      className={`rounded-lg border p-3 text-left transition-colors ${
+                        colorScheme === scheme
+                          ? 'border-orange-500 bg-orange-950/30 ring-1 ring-orange-500/40'
+                          : isDark
+                          ? 'border-slate-700 bg-slate-900 hover:border-slate-600'
+                          : 'border-slate-300 bg-white hover:border-slate-400'
+                      }`}
+                    >
+                      <span className="block text-xs font-semibold text-slate-100">{label}</span>
+                      <span className="mt-1 block text-[11px] text-slate-400">{description}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section
+                className={`space-y-3 rounded-xl border p-4 ${
+                  isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-50 border-slate-200'
+                }`}
+              >
+                <div>
+                  <h4 className={`text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
+                    Background logo
+                  </h4>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    This image appears above the version number in the bottom-right corner.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex h-20 w-64 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 p-2">
+                    <img
+                      src={logoImage || '/assets/Renishaw_PRIMARYandSL_orange_black_RGB.png'}
+                      alt="Background logo preview"
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  </div>
+                  <input
+                    ref={logoFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoFileChange}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => logoFileInputRef.current?.click()}
+                    className="rounded-lg bg-orange-600 px-4 py-2 text-xs font-semibold text-white hover:bg-orange-500"
+                  >
+                    Choose image…
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        onChangeLogoImage('');
+                        setLogoError(null);
+                      } catch (error) {
+                        setLogoError(
+                          error instanceof Error ? error.message : 'Could not restore the default logo.'
+                        );
+                      }
+                    }}
+                    className="rounded-lg border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+                  >
+                    Restore default
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Custom images must be 2 MB or smaller. The supplied Renishaw logo is used by default.
+                </p>
+                {logoError && <p role="alert" className="text-xs text-rose-300">{logoError}</p>}
+              </section>
             </div>
           )}
 

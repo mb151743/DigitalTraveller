@@ -52,10 +52,16 @@ import {
 } from './services/laserGratingWorkflow';
 
 export const App: React.FC = () => {
-  // Theme state: 'dark' | 'light'
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    return (localStorage.getItem('digital_traveller_theme') as 'dark' | 'light') || 'dark';
+  const [colorScheme, setColorScheme] = useState<'standard' | 'monochrome' | 'orange'>(() => {
+    const saved = localStorage.getItem('digital_traveller_color_scheme');
+    return saved === 'monochrome' || saved === 'orange' ? saved : 'standard';
   });
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return localStorage.getItem('digital_traveller_theme') === 'light' ? 'light' : 'dark';
+  });
+  const [logoImage, setLogoImage] = useState(
+    () => localStorage.getItem('digital_traveller_logo_image') || ''
+  );
 
   // Admin state (unlocked by selecting 'Admin' with password '520Shift')
   const [isAdmin, setIsAdmin] = useState(false);
@@ -153,6 +159,7 @@ export const App: React.FC = () => {
   // Persist theme
   useEffect(() => {
     localStorage.setItem('digital_traveller_theme', theme);
+    document.documentElement.dataset.colorScheme = colorScheme;
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
       document.documentElement.classList.remove('light');
@@ -160,7 +167,11 @@ export const App: React.FC = () => {
       document.documentElement.classList.add('light');
       document.documentElement.classList.remove('dark');
     }
-  }, [theme]);
+  }, [theme, colorScheme]);
+
+  useEffect(() => {
+    localStorage.setItem('digital_traveller_color_scheme', colorScheme);
+  }, [colorScheme]);
 
   // Auto clear notification
   useEffect(() => {
@@ -174,7 +185,17 @@ export const App: React.FC = () => {
   const selectedStep = traveller.steps.find((s) => s.id === selectedStepId) || null;
 
   const handleToggleTheme = () => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+    setTheme(theme === 'dark' ? 'light' : 'dark');
+    setColorScheme('standard');
+  };
+
+  const handleUpdateLogoImage = (image: string) => {
+    if (image) {
+      localStorage.setItem('digital_traveller_logo_image', image);
+    } else {
+      localStorage.removeItem('digital_traveller_logo_image');
+    }
+    setLogoImage(image);
   };
 
   // Handle stage selection
@@ -965,6 +986,7 @@ export const App: React.FC = () => {
       system={traveller.system}
       serialNumber={traveller.serialNumber}
       theme={theme}
+      logoImage={logoImage}
       isAdmin={isAdmin}
       onToggleTheme={handleToggleTheme}
       onOpenSettings={() => setIsAdminSettingsOpen(true)}
@@ -1127,6 +1149,10 @@ export const App: React.FC = () => {
         system={traveller.system}
         traveller={traveller}
         theme={theme}
+        colorScheme={colorScheme}
+        onChangeColorScheme={setColorScheme}
+        logoImage={logoImage}
+        onChangeLogoImage={handleUpdateLogoImage}
         onClose={() => setIsAdminSettingsOpen(false)}
         onApplyWorkflows={handleApplyWorkflows}
         onUpdateTravellerFromExcel={(updatedRec, msg) => {
