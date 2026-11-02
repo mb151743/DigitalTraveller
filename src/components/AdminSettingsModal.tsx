@@ -37,7 +37,7 @@ interface AdminSettingsModalProps {
   system: SystemType;
   traveller: TravellerRecord;
   theme?: 'dark' | 'light';
-  initialTab?: 'excel' | 'workflows' | 'systems' | 'storage' | 'appearance';
+  initialTab?: 'excel' | 'workflows' | 'systems' | 'appearance';
   colorScheme: 'standard' | 'monochrome' | 'orange';
   onChangeColorScheme: (scheme: 'standard' | 'monochrome' | 'orange') => void;
   logoImage: string;
@@ -66,7 +66,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
   if (!isOpen) return null;
 
   const [activeTab, setActiveTab] = useState<
-    'excel' | 'workflows' | 'systems' | 'storage' | 'appearance'
+    'excel' | 'workflows' | 'systems' | 'appearance'
   >(initialTab);
   const [registeredSystems, setRegisteredSystems] = useState<string[]>(() =>
     SystemRegistryService.getSystems()
@@ -556,7 +556,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                 Settings &amp; Production Configuration
               </h3>
               <p className="text-[11px] text-slate-400">
-                File Storage &bull; Network Share Spreadsheets &bull; Workflows &bull; System Types
+                Excel workbook sources &bull; Network and local save locations &bull; Workflows &bull; System Types
               </p>
             </div>
           </div>
@@ -592,7 +592,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
               }`}
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Excel Hub &amp; Network Shares</span>
+              <span>Excel Sheets &amp; Save Locations</span>
             </button>
 
             <button
@@ -623,21 +623,6 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add New System</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('storage')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all ${
-                activeTab === 'storage'
-                  ? 'bg-violet-600 text-white shadow-xs'
-                  : isDark
-                  ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-              }`}
-            >
-              <Folder className="w-3.5 h-3.5" />
-              <span>File Storage</span>
             </button>
 
             <button
@@ -786,8 +771,93 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
             </div>
           )}
 
-          {activeTab === 'storage' && (
+          {/* TAB: EXCEL SHEETS & SAVE LOCATIONS */}
+          {activeTab === 'excel' && (
             <div className="space-y-4">
+              <div
+                className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                  isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-50 border-slate-200'
+                }`}
+              >
+                <div>
+                  <div className="font-semibold text-xs text-slate-200 flex items-center gap-1.5">
+                    <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Select System</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Choose the system whose save locations and workbook sources you want to configure.
+                  </p>
+                </div>
+                <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                  {registeredSystems.map((sys) => {
+                    const isCurrent = sys === traveller.system;
+                    const isSelected = sys === selectedSystemFilter;
+                    return (
+                      <button
+                        key={sys}
+                        type="button"
+                        onClick={() => {
+                          setSelectedSystemFilter(sys);
+                          setNetworkSaveLocation(NetworkShareConfigService.getNetworkSaveLocation(sys));
+                          setSaveLocation(StorageService.getSaveLocation());
+                          const locs =
+                            networkConfigs[sys] ||
+                            NetworkShareConfigService.getLocationsForSystem(sys);
+                          setSelectedLocationId(locs[0]?.id || 'loc-1');
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                          isSelected
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : isDark
+                            ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                            : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                        }`}
+                      >
+                        <span>{sys}</span>
+                        {isCurrent && (
+                          <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-950 text-emerald-300 font-mono">
+                            Active
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <section
+                className={`p-4 rounded-xl border space-y-3 ${
+                  isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-white border-slate-200'
+                }`}
+              >
+                <div>
+                  <h4 className="text-xs font-bold text-white">Network Save Location</h4>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Base folder used to find or create the system folder for {selectedSystemFilter}.
+                    Test sheets are saved inside the system folder at Internal data\Digital Test Sheets.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="text"
+                    aria-label={`${selectedSystemFilter} network save location`}
+                    value={networkSaveLocation}
+                    onChange={(event) =>
+                      handleUpdateNetworkSaveLocation(selectedSystemFilter, event.target.value)
+                    }
+                    placeholder="Enter a local or UNC network folder path"
+                    className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-mono text-slate-100 focus:border-emerald-500 focus:outline-hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleBrowseNetworkSaveLocation}
+                    className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+                  >
+                    Browse…
+                  </button>
+                </div>
+              </section>
+
               <section
                 className={`space-y-3 rounded-xl border p-4 ${
                   isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-50 border-slate-200'
@@ -795,7 +865,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
               >
                 <div>
                   <h4 className={`text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
-                    Save local location
+                    Local Save Location
                   </h4>
                   <p className="mt-1 text-[11px] text-slate-400">
                     System folders and generated laser/grating files are saved here. Leave blank to
@@ -805,6 +875,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <input
                     type="text"
+                    aria-label="Local Save Location"
                     value={saveLocation}
                     onChange={(event) => setSaveLocation(event.target.value)}
                     placeholder="Documents folder (default), or enter a local/UNC path"
@@ -830,7 +901,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                     onClick={handleSaveLocation}
                     className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-500"
                   >
-                    Save local location
+                    Save Local Location
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-400">
@@ -839,95 +910,6 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                   {' '}will contain Customer data and Internal data folders.
                 </p>
               </section>
-            </div>
-          )}
-
-          {/* TAB: EXCEL HUB & NETWORK SHARE LOCATIONS */}
-          {activeTab === 'excel' && (
-            <div className="space-y-4">
-              <section
-                className={`p-4 rounded-xl border space-y-3 ${
-                  isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-white border-slate-200'
-                }`}
-              >
-                <div>
-                  <h4 className="text-xs font-bold text-white">Network Save Location</h4>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Destination directory used to find or create the system folder for {selectedSystemFilter}.
-                  </p>
-                </div>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <input
-                    type="text"
-                    aria-label={`${selectedSystemFilter} network save location`}
-                    value={networkSaveLocation}
-                    onChange={(event) =>
-                      handleUpdateNetworkSaveLocation(selectedSystemFilter, event.target.value)
-                    }
-                    placeholder="Enter a local or UNC network folder path"
-                    className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-mono text-slate-100 focus:border-emerald-500 focus:outline-hidden"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleBrowseNetworkSaveLocation}
-                    className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
-                  >
-                    Browse…
-                  </button>
-                </div>
-              </section>
-
-              {/* System Selector for workbook source locations */}
-              <div
-                className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                  isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-50 border-slate-200'
-                }`}
-              >
-                <div>
-                  <div className="font-semibold text-xs text-slate-200 flex items-center gap-1.5">
-                    <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Workbook Source Locations</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Configure the source workbook paths for the selected instrument.
-                  </p>
-                </div>
-
-                <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
-                  {registeredSystems.map((sys) => {
-                    const isCurrent = sys === traveller.system;
-                    const isSelected = sys === selectedSystemFilter;
-                    return (
-                      <button
-                        key={sys}
-                        type="button"
-                        onClick={() => {
-                          setSelectedSystemFilter(sys);
-                          setNetworkSaveLocation(NetworkShareConfigService.getNetworkSaveLocation(sys));
-                          const locs =
-                            networkConfigs[sys] ||
-                            NetworkShareConfigService.getLocationsForSystem(sys);
-                          setSelectedLocationId(locs[0]?.id || 'loc-1');
-                        }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                          isSelected
-                            ? 'bg-emerald-600 text-white shadow-xs'
-                            : isDark
-                            ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                            : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-                        }`}
-                      >
-                        <span>{sys}</span>
-                        {isCurrent && (
-                          <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-950 text-emerald-300 font-mono">
-                            Active
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
 
               {/* Workbook locations for the chosen system */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

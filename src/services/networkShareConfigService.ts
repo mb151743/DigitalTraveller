@@ -15,9 +15,14 @@ const CURRENT_TEST_SHEETS_ROOT =
   '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Final Test\\Current Test Sheets';
 
 const DEFAULT_NETWORK_SAVE_LOCATIONS: Record<string, string> = {
-  inVia: '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Test\\Final Test Data\\InVia\\000000_INLUX0726-11_CDC\\Internal data\\Digital Test Sheets\\',
-  Virsa: '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Test\\Final Test Data\\Virsa\\000000_INLUX0726-11_CDC\\Internal data\\Digital Test Sheets\\',
-  inLux: '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Test\\Final Test Data\\inLux\\000000_INLUX0726-11_CDC\\Internal data\\Digital Test Sheets\\'
+  inVia: '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Test\\Final Test Data\\InVia\\',
+  Virsa: '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Test\\Final Test Data\\Virsa\\',
+  inLux: '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Test\\Final Test Data\\inLux\\'
+};
+const LEGACY_NETWORK_SAVE_LOCATIONS: Record<string, string> = {
+  inVia: `${DEFAULT_NETWORK_SAVE_LOCATIONS.inVia}000000_INLUX0726-11_CDC\\Internal data\\Digital Test Sheets\\`,
+  Virsa: `${DEFAULT_NETWORK_SAVE_LOCATIONS.Virsa}000000_INLUX0726-11_CDC\\Internal data\\Digital Test Sheets\\`,
+  inLux: `${DEFAULT_NETWORK_SAVE_LOCATIONS.inLux}000000_INLUX0726-11_CDC\\Internal data\\Digital Test Sheets\\`
 };
 
 /**
@@ -219,13 +224,28 @@ export class NetworkShareConfigService {
       const stored = localStorage.getItem(STORAGE_KEY_NETWORK_SAVE_LOCATIONS);
       if (stored) {
         const locations = JSON.parse(stored) as Record<string, unknown>;
-        if (typeof locations[system] === 'string') return locations[system] as string;
+        const configuredLocation = locations[system];
+        if (typeof configuredLocation === 'string') {
+          const legacyLocation = LEGACY_NETWORK_SAVE_LOCATIONS[system];
+          const defaultLocation = DEFAULT_NETWORK_SAVE_LOCATIONS[system];
+          if (
+            legacyLocation &&
+            defaultLocation &&
+            configuredLocation.replace(/[\\/]+$/, '').toLowerCase() ===
+              legacyLocation.replace(/[\\/]+$/, '').toLowerCase()
+          ) {
+            locations[system] = defaultLocation;
+            localStorage.setItem(STORAGE_KEY_NETWORK_SAVE_LOCATIONS, JSON.stringify(locations));
+            return defaultLocation;
+          }
+          return configuredLocation;
+        }
       }
     } catch (e) {
       console.warn('Failed to load network save locations', e);
     }
     return DEFAULT_NETWORK_SAVE_LOCATIONS[system] ||
-      `\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Test\\Final Test Data\\${system.replace(/\s+/g, '_')}\\Internal data\\Digital Test Sheets\\`;
+      `\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Test\\Final Test Data\\${system.replace(/\s+/g, '_')}\\`;
   }
 
   static setNetworkSaveLocation(system: SystemType, location: string): void {

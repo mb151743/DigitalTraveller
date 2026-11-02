@@ -1290,7 +1290,7 @@ export const App: React.FC = () => {
         onAddStep={handleAddCustomStep}
       />
 
-      {/* Settings Modal (Excel Hub with Network Locations, All-Systems Workflows & Add New System) */}
+      {/* Settings Modal (Excel Sheets & Save Locations, Workflows & System Types) */}
       <AdminSettingsModal
         isOpen={isAdminSettingsOpen}
         system={traveller.system}

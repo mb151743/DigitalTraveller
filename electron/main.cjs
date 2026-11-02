@@ -1118,12 +1118,18 @@ ipcMain.handle('check-network-status', async (event, configuredLocation) => {
         credentials: 'include',
         signal: controller.signal
       });
-      return response.ok
-        ? { success: true, message: 'WiRE dashboard is reachable.' }
-        : {
-            success: false,
-            message: `WiRE dashboard returned HTTP ${response.status}.`
-          };
+      if (response.status < 500) {
+        return {
+          success: true,
+          message: response.status === 401 || response.status === 403
+            ? `spd-apps is reachable (HTTP ${response.status}); dashboard login/session was not validated.`
+            : `spd-apps is reachable (HTTP ${response.status}).`
+        };
+      }
+      return {
+        success: false,
+        message: `spd-apps responded with HTTP ${response.status}.`
+      };
     } catch (error) {
       return {
         success: false,

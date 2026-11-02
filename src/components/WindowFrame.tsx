@@ -151,11 +151,11 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({
 
         {/* Settings, theme switch and Windows window buttons */}
         <div className="no-drag flex items-center -mr-3 h-full flex-shrink-0">
-          {/* Settings button (Excel Hub & Network Shares, Workflows) */}
+          {/* Settings button (Excel Sheets & Save Locations, Workflows) */}
           <button
             type="button"
             onClick={onOpenSettings}
-            title={isAdmin ? "Settings & Excel Hub (Admin)" : "Settings & Network Share Excel Hub"}
+            title={isAdmin ? "Settings & Excel Sheets & Save Locations (Admin)" : "Settings & Excel Sheets & Save Locations"}
             className={`h-10 px-2.5 transition-colors flex items-center justify-center ${
               isAdmin
                 ? isDark
