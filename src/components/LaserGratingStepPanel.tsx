@@ -37,7 +37,7 @@ export const LaserGratingStepPanel: React.FC<LaserGratingStepPanelProps> = ({
   const updateRow = (
     index: number,
     field: keyof LaserGratingCombination,
-    value: string
+    value: string | boolean
   ) => {
     const updated = combinations.map((row, rowIndex) =>
       rowIndex === index ? { ...row, [field]: value } : row
@@ -49,7 +49,7 @@ export const LaserGratingStepPanel: React.FC<LaserGratingStepPanelProps> = ({
   const handleAddRow = () => {
     onChange([
       ...combinations,
-      { wavelengthNm: '', gratingDensityLinesPerMm: '' }
+      { wavelengthNm: '', gratingDensityLinesPerMm: '', cutoffValue: '', pl: false }
     ]);
     setMessage(null);
   };
@@ -109,14 +109,26 @@ export const LaserGratingStepPanel: React.FC<LaserGratingStepPanelProps> = ({
     return (
       <section className="space-y-3">
         <div className="text-xs font-semibold uppercase tracking-wide text-slate-200">
-          Laser and grating combinations
+          Laser &amp; Grating Combinations
         </div>
         <div className="space-y-2">
           {combinations.map((combination, index) => (
             <div
               key={index}
-              className="grid grid-cols-[1fr_1fr_auto] items-end gap-2 rounded-lg border border-slate-800 bg-slate-950/50 p-3"
+              className="grid grid-cols-1 items-end gap-2 rounded-lg border border-slate-800 bg-slate-950/50 p-3 sm:grid-cols-[1fr_1fr_1fr_auto_auto]"
             >
+              <label className="space-y-1 text-[11px] text-slate-400">
+                <span>Cutoff value (cm⁻¹)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={combination.cutoffValue}
+                  onChange={(event) => updateRow(index, 'cutoffValue', event.target.value)}
+                  placeholder="100"
+                  className="w-full rounded border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs text-slate-100"
+                />
+              </label>
               <label className="space-y-1 text-[11px] text-slate-400">
                 <span>Laser wavelength (nm)</span>
                 <input
@@ -142,6 +154,15 @@ export const LaserGratingStepPanel: React.FC<LaserGratingStepPanelProps> = ({
                   placeholder="2400"
                   className="w-full rounded border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs text-slate-100"
                 />
+              </label>
+              <label className="flex items-center gap-2 pb-2 text-[11px] text-slate-400">
+                <input
+                  type="checkbox"
+                  checked={combination.pl}
+                  onChange={(event) => updateRow(index, 'pl', event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-blue-500"
+                />
+                <span>PL (yes/no)</span>
               </label>
               <button
                 type="button"

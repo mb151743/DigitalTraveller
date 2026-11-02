@@ -8,6 +8,8 @@ export type StepStatus = 'Not Started' | 'In Progress' | 'Complete';
 export interface LaserGratingCombination {
   wavelengthNm: string;
   gratingDensityLinesPerMm: string;
+  cutoffValue: string;
+  pl: boolean;
 }
 
 export type LaserGratingFileResult =
@@ -58,6 +60,18 @@ export interface NetworkSaveLocationResult {
   renamed: boolean;
   created: boolean;
 }
+
+export interface NetworkSystemFolderSearchResult {
+  success: true;
+  folderName: string | null;
+  existingCustomerName: string | null;
+  customerNameMatches: boolean | null;
+  customerDataFolderNames: string[];
+}
+
+export type NetworkSystemFolderSearchOperationResult =
+  | NetworkSystemFolderSearchResult
+  | { success: false; error: string };
 
 export type NetworkSaveLocationOperationResult =
   | NetworkSaveLocationResult

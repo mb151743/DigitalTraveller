@@ -48,12 +48,25 @@ contextBridge.exposeInMainWorld('desktopAPI', {
     testSheetMetadata,
     cellMappings
   }),
-  updateNetworkSaveLocation: (serialNumber, partNumber, customerName, configuredLocation) =>
+  findNetworkSystemFolder: (partNumber, customerName, configuredLocation) =>
+    ipcRenderer.invoke('find-network-system-folder', {
+      partNumber,
+      customerName,
+      configuredLocation
+    }),
+  updateNetworkSaveLocation: (
+    serialNumber,
+    partNumber,
+    customerName,
+    configuredLocation,
+    existingFolderName
+  ) =>
     ipcRenderer.invoke('update-network-save-location', {
       serialNumber,
       partNumber,
       customerName,
-      configuredLocation
+      configuredLocation,
+      existingFolderName
     }),
   saveMotorScanResults: (systemFolderPath, serialNumber, partNumber, customerName, entries) =>
     ipcRenderer.invoke('save-motor-scan-results', {

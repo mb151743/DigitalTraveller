@@ -411,6 +411,81 @@ function getConfiguredNetworkSystemRoot(configuredLocation) {
   return root;
 }
 
+function getPartNumberMatches(entries, partNumber) {
+  const marker = `_${partNumber}_`.toLowerCase();
+  return entries.filter((entry) =>
+    entry.isDirectory() && entry.name.toLowerCase().includes(marker)
+  );
+}
+
+function getFolderCustomerName(folderName, partNumber) {
+  const marker = `_${partNumber}_`.toLowerCase();
+  const markerIndex = folderName.toLowerCase().indexOf(marker);
+  return markerIndex < 0 ? null : folderName.slice(markerIndex + marker.length);
+}
+
+async function getCustomerDataFolderNames(systemDirectory) {
+  const customerDataDirectory = path.join(systemDirectory, 'Customer data');
+  let entries;
+  try {
+    entries = await fs.promises.readdir(customerDataDirectory, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+  return entries
+    .filter((entry) =>
+      entry.isDirectory() &&
+      !['reg backup', 'system pictures'].includes(entry.name.toLowerCase())
+    )
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+ipcMain.handle('find-network-system-folder', async (event, request) => {
+  try {
+    const partNumber = validatePathSegment(request?.partNumber, 'part number');
+    const customerName = validatePathSegment(request?.customerName, 'customer name');
+    const configuredRoot = getConfiguredNetworkSystemRoot(request?.configuredLocation);
+    const rootStats = await fs.promises.stat(configuredRoot);
+    if (!rootStats.isDirectory()) {
+      throw new Error('The configured Network Save Location is not a folder.');
+    }
+
+    const entries = await fs.promises.readdir(configuredRoot, { withFileTypes: true });
+    const matches = getPartNumberMatches(entries, partNumber);
+    if (matches.length > 1) {
+      throw new Error(
+        `More than one network folder matches Part Number "${partNumber}". Resolve the duplicates manually.`
+      );
+    }
+    if (matches.length === 0) {
+      return {
+        success: true,
+        folderName: null,
+        existingCustomerName: null,
+        customerNameMatches: null,
+        customerDataFolderNames: []
+      };
+    }
+
+    const existingCustomerName = getFolderCustomerName(matches[0].name, partNumber);
+    const systemDirectory = path.join(configuredRoot, matches[0].name);
+    const customerDataFolderNames = await getCustomerDataFolderNames(systemDirectory);
+    return {
+      success: true,
+      folderName: matches[0].name,
+      existingCustomerName,
+      customerNameMatches:
+        existingCustomerName?.toLowerCase() === customerName.toLowerCase(),
+      customerDataFolderNames
+    };
+  } catch (error) {
+    console.error('Failed to find network system folder:', error);
+    return { success: false, error: `Could not find network system folder: ${error.message}` };
+  }
+});
+
 ipcMain.handle('update-network-save-location', async (event, request) => {
   try {
     const serialNumber = validatePathSegment(request?.serialNumber, 'serial number');
@@ -423,35 +498,50 @@ ipcMain.handle('update-network-save-location', async (event, request) => {
     }
 
     const expectedName = `${serialNumber}_${partNumber}_${customerName}`;
-    const legacySuffix = `_${partNumber}_${customerName}`.toLowerCase();
     const entries = await fs.promises.readdir(configuredRoot, { withFileTypes: true });
-    const matches = entries.filter((entry) =>
-      entry.isDirectory() && entry.name.toLowerCase().endsWith(legacySuffix)
-    );
+    const matches = getPartNumberMatches(entries, partNumber);
     if (matches.length > 1) {
       throw new Error(
-        `More than one network folder matches Part Number "${partNumber}" and Customer Name "${customerName}". Resolve the duplicates manually.`
+        `More than one network folder matches Part Number "${partNumber}". Resolve the duplicates manually.`
       );
     }
 
     let systemDirectory = path.join(configuredRoot, expectedName);
     let renamed = false;
     let created = false;
-    if (matches.length === 1) {
-      const currentDirectory = path.join(configuredRoot, matches[0].name);
-      if (path.resolve(currentDirectory).toLowerCase() !== path.resolve(systemDirectory).toLowerCase()) {
+    const existingFolderName = request?.existingFolderName
+      ? validatePathSegment(request.existingFolderName, 'existing folder name')
+      : null;
+    if (existingFolderName) {
+      if (matches.length !== 1 || matches[0].name.toLowerCase() !== existingFolderName.toLowerCase()) {
+        throw new Error('The Part Number folder search is out of date. Search again before continuing.');
+      }
+      const existingCustomerName = getFolderCustomerName(existingFolderName, partNumber);
+      if (!existingCustomerName) {
+        throw new Error('The matching network folder does not contain a Customer Name.');
+      }
+      const currentDirectory = path.join(configuredRoot, existingFolderName);
+      const targetDirectory = path.join(
+        configuredRoot,
+        `${serialNumber}_${partNumber}_${existingCustomerName}`
+      );
+      if (path.resolve(currentDirectory).toLowerCase() !== path.resolve(targetDirectory).toLowerCase()) {
         try {
-          await fs.promises.access(systemDirectory);
-          throw new Error(`The destination network folder already exists: ${systemDirectory}`);
+          await fs.promises.access(targetDirectory);
+          throw new Error(`The destination network folder already exists: ${targetDirectory}`);
         } catch (error) {
           if (error.code !== 'ENOENT') throw error;
         }
-        await fs.promises.rename(currentDirectory, systemDirectory);
+        await fs.promises.rename(currentDirectory, targetDirectory);
         renamed = true;
       } else {
-        systemDirectory = currentDirectory;
+        systemDirectory = targetDirectory;
       }
+      systemDirectory = targetDirectory;
     } else {
+      if (matches.length > 0) {
+        throw new Error('A folder matching this Part Number was found. Search again before continuing.');
+      }
       await fs.promises.mkdir(systemDirectory);
       created = true;
     }
@@ -521,7 +611,6 @@ ipcMain.handle('create-system-folders', async (event, request) => {
   try {
     const systemDirectory = getSystemDirectory(request);
     const folders = [
-      path.join(systemDirectory, 'Customer data', 'Probe 1'),
       path.join(systemDirectory, 'Customer data', 'Reg Backup'),
       path.join(systemDirectory, 'Customer data', 'System Pictures'),
       path.join(systemDirectory, 'Internal data', 'Digital Test Sheets'),

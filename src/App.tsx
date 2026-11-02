@@ -12,6 +12,7 @@ import {
   DigitalTestSheetMetadata,
   MotorScanEntry,
   MotorScanSaveResult,
+  NetworkSystemFolderSearchOperationResult,
   NetworkSaveLocationOperationResult
 } from './types/traveller';
 import { StorageService } from './services/storageService';
@@ -49,6 +50,7 @@ import {
   CREATE_TEST_SHEETS_STEP_NAME,
   CREATE_TEST_SHEETS_STEP_INSTRUCTIONS,
   LASER_GRATING_SELECTION_STEP_NAME,
+  LEGACY_LASER_GRATING_SELECTION_STEP_NAME,
   PRE_SYSTEM_TEST_STEP_NAME,
   PRE_SYSTEM_TEST_STEP_INSTRUCTIONS
 } from './services/laserGratingWorkflow';
@@ -462,6 +464,11 @@ export const App: React.FC = () => {
 
   // Handle applied workflow template from Admin Settings (Load Workflows)
   const handleApplyWorkflows = (newStages: string[], newSteps: WorkflowStep[]) => {
+    newSteps = newSteps.map((step) =>
+      step.name === LEGACY_LASER_GRATING_SELECTION_STEP_NAME
+        ? { ...step, name: LASER_GRATING_SELECTION_STEP_NAME }
+        : step
+    );
     const isinVia = traveller.system === 'inVia';
 
     // Normalize incoming stages
@@ -569,18 +576,22 @@ export const App: React.FC = () => {
         measuredData: []
       };
 
-      const folderStep = newSteps.find((s) => s.name === SYSTEM_FOLDERS_STEP_NAME) || {
-        id: `step-${traveller.system}-system-folders-${Date.now().toString(36)}`,
-        name: SYSTEM_FOLDERS_STEP_NAME,
-        stage: 'Set Up',
-        status: 'Not Started',
-        completedAt: null,
-        startedAt: null,
-        technician: '',
-        notes: '',
-        instructions: [...SYSTEM_FOLDERS_STEP_INSTRUCTIONS],
-        checklist: [],
-        measuredData: []
+      const existingFolderStep = newSteps.find((s) => s.name === SYSTEM_FOLDERS_STEP_NAME);
+      const folderStep: WorkflowStep = {
+        ...(existingFolderStep || {
+          id: `step-${traveller.system}-system-folders-${Date.now().toString(36)}`,
+          name: SYSTEM_FOLDERS_STEP_NAME,
+          stage: 'Set Up',
+          status: 'Not Started',
+          completedAt: null,
+          startedAt: null,
+          technician: '',
+          notes: '',
+          instructions: [...SYSTEM_FOLDERS_STEP_INSTRUCTIONS],
+          checklist: [],
+          measuredData: []
+        }),
+        instructions: [...SYSTEM_FOLDERS_STEP_INSTRUCTIONS]
       };
       const networkSaveLocationStep =
         newSteps.find((s) => s.name === UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME) || {
@@ -718,7 +729,11 @@ export const App: React.FC = () => {
             measuredData: []
           };
       const folderStep = existingFolderStep
-        ? { ...existingFolderStep, stage: 'Set Up' }
+        ? {
+            ...existingFolderStep,
+            stage: 'Set Up',
+            instructions: [...SYSTEM_FOLDERS_STEP_INSTRUCTIONS]
+          }
         : {
             id: `step-${traveller.system}-system-folders-${Date.now().toString(36)}`,
             name: SYSTEM_FOLDERS_STEP_NAME,
@@ -783,6 +798,20 @@ export const App: React.FC = () => {
         }
       }
       normalizedSteps = normalizeInViaVirsaWorkflowSteps(normalizedSteps);
+    }
+
+    const systemFoldersIndex = normalizedSteps.findIndex(
+      (step) => step.name === SYSTEM_FOLDERS_STEP_NAME
+    );
+    const laserSelectionIndex = normalizedSteps.findIndex(
+      (step) => step.name === LASER_GRATING_SELECTION_STEP_NAME
+    );
+    if (systemFoldersIndex >= 0 && laserSelectionIndex >= 0 && systemFoldersIndex < laserSelectionIndex) {
+      const [systemFoldersStep] = normalizedSteps.splice(systemFoldersIndex, 1);
+      const updatedSelectionIndex = normalizedSteps.findIndex(
+        (step) => step.name === LASER_GRATING_SELECTION_STEP_NAME
+      );
+      normalizedSteps.splice(updatedSelectionIndex + 1, 0, systemFoldersStep);
     }
 
     if (['inVia', 'Virsa', 'inLux'].includes(traveller.system)) {
@@ -897,8 +926,26 @@ export const App: React.FC = () => {
     return result;
   };
 
+  const handleFindNetworkSystemFolder =
+    async (): Promise<NetworkSystemFolderSearchOperationResult> => {
+      const findFolder = window.desktopAPI?.findNetworkSystemFolder;
+      if (!findFolder) {
+        return {
+          success: false,
+          error: 'Finding network folders is available in the Windows desktop app only.'
+        };
+      }
+
+      const configuredLocation = NetworkShareConfigService.getNetworkSaveLocation(traveller.system);
+      return findFolder(
+        traveller.partNumber || '',
+        traveller.customerName || '',
+        configuredLocation
+      );
+    };
+
   const handleUpdateNetworkSaveLocation =
-    async (): Promise<NetworkSaveLocationOperationResult> => {
+    async (existingFolderName?: string): Promise<NetworkSaveLocationOperationResult> => {
       const updateLocation = window.desktopAPI?.updateNetworkSaveLocation;
       if (!updateLocation) {
         return {
@@ -912,7 +959,8 @@ export const App: React.FC = () => {
         traveller.serialNumber,
         traveller.partNumber || '',
         traveller.customerName || '',
-        configuredLocation
+        configuredLocation,
+        existingFolderName
       );
     };
 
@@ -1144,6 +1192,7 @@ export const App: React.FC = () => {
         onUpdateLaserGratingCombinations={handleUpdateLaserGratingCombinations}
         onCreateLaserGratingFiles={handleCreateLaserGratingFiles}
         onCreateSystemFolders={handleCreateSystemFolders}
+        onFindNetworkSystemFolder={handleFindNetworkSystemFolder}
         onUpdateNetworkSaveLocation={handleUpdateNetworkSaveLocation}
         onNetworkSystemFolderUpdated={handleNetworkSystemFolderUpdated}
         onSaveMotorScanResults={handleSaveMotorScanResults}

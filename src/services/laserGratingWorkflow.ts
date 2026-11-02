@@ -1,6 +1,7 @@
 import { LaserGratingCombination } from '../types/traveller';
 
-export const LASER_GRATING_SELECTION_STEP_NAME = 'Select Laser and Grating Combinations';
+export const LEGACY_LASER_GRATING_SELECTION_STEP_NAME = 'Select Laser and Grating Combinations';
+export const LASER_GRATING_SELECTION_STEP_NAME = 'Select Laser & Grating Combinations';
 export const CREATE_TEST_SHEETS_STEP_NAME = 'Create Test Sheets';
 export const CREATE_TEST_SHEETS_STEP_INSTRUCTIONS = [
   'Copy the configured master digital test sheet into Internal data\\Digital Test Sheets.',
@@ -25,8 +26,8 @@ export const IN_VIA_VIRSA_SETUP_STEP_NAMES = [
   RECORD_SYSTEM_DETAILS_STEP_NAME,
   SAVE_WIRE_PASSWORDS_STEP_NAME,
   UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME,
-  SYSTEM_FOLDERS_STEP_NAME,
   LASER_GRATING_SELECTION_STEP_NAME,
+  SYSTEM_FOLDERS_STEP_NAME,
   CREATE_TEST_SHEETS_STEP_NAME,
   LASER_GRATING_FILES_STEP_NAME
 ] as const;
@@ -42,9 +43,11 @@ export function normalizeInViaVirsaWorkflowSteps<T extends { name: string; stage
 ): T[] {
   const normalizedSteps = steps.map((step) => ({
     ...step,
-    name: step.name === 'Fiber Probe Head Coupling & Shutter Test'
-      ? 'Fibre Probe Head Coupling & Shutter Test'
-      : step.name
+    name: step.name === LEGACY_LASER_GRATING_SELECTION_STEP_NAME
+      ? LASER_GRATING_SELECTION_STEP_NAME
+      : step.name === 'Fiber Probe Head Coupling & Shutter Test'
+        ? 'Fibre Probe Head Coupling & Shutter Test'
+        : step.name
   }));
   const setupSteps = IN_VIA_VIRSA_SETUP_STEP_NAMES.flatMap((name) => {
     const step = normalizedSteps.find((item) => item.name === name);
@@ -67,7 +70,7 @@ export const LASER_GRATING_FILES_SAVE_INSTRUCTION =
   'Files are saved in the configured system folder under Internal data/Extra Data.';
 export const SYSTEM_FOLDERS_STEP_INSTRUCTIONS = [
   'Create the system folder named <Serial Number>_<Part Number>_<Customer Name>.',
-  'Create Customer data\\Probe 1, Customer data\\Reg Backup, and Customer data\\System Pictures.',
+  'Create Customer data\\Reg Backup and Customer data\\System Pictures.',
   'Create Internal data\\Digital Test Sheets and Internal data\\Extra Data. Save test sheets and records in Internal data.'
 ];
 export const PAT_TEST_STEP_INSTRUCTIONS = [
@@ -82,8 +85,8 @@ export const PRE_SYSTEM_TEST_STEP_INSTRUCTIONS = [
   'Complete each motor instruction, then save the motor test results to the network.'
 ];
 export const UPDATE_NETWORK_SAVE_LOCATION_STEP_INSTRUCTIONS = [
-  'Search the configured network location for a system folder matching the Part Number and Customer Name.',
-  'Rename a matching folder to <Serial Number>_<Part Number>_<Customer Name>, or create that folder when no match exists.',
+  'Part 1: Find an existing network folder using the Part Number. Check whether its Customer Name matches the saved system details and review the combination folders inside Customer data.',
+  'Part 2: Update the Serial Number on a matching folder while preserving its existing Customer Name, or create a new folder using the saved details when no Part Number match exists.',
   'Review and record the folder names already present in the system folder.'
 ];
 export const SYSTEM_UNBOXING_STEP_INSTRUCTIONS = [
@@ -97,6 +100,21 @@ export function getLaserGratingFileName(combination: LaserGratingCombination): s
   return `${Number(combination.wavelengthNm)}nm_${Number(combination.gratingDensityLinesPerMm)}.txt`;
 }
 
+export function parseLaserGratingCombinationFolder(
+  folderName: string
+): LaserGratingCombination | null {
+  const match = folderName.match(
+    /^\s*(\d+(?:\.\d+)?)\s*cm-1[_\s]+(\d+(?:\.\d+)?)\s*nm[_\s]+(\d+)\s*lmm\s*$/i
+  );
+  if (!match) return null;
+  return {
+    cutoffValue: match[1],
+    wavelengthNm: match[2],
+    gratingDensityLinesPerMm: match[3],
+    pl: false
+  };
+}
+
 export function validateLaserGratingCombinations(
   combinations: LaserGratingCombination[]
 ): string | null {
@@ -108,7 +126,9 @@ export function validateLaserGratingCombinations(
     const combination = combinations[index];
     if (
       typeof combination?.wavelengthNm !== 'string' ||
-      typeof combination?.gratingDensityLinesPerMm !== 'string'
+      typeof combination?.gratingDensityLinesPerMm !== 'string' ||
+      typeof combination?.cutoffValue !== 'string' ||
+      typeof combination?.pl !== 'boolean'
     ) {
       return `Enter a wavelength and grating density in row ${index + 1}.`;
     }

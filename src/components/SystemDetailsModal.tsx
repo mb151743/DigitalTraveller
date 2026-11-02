@@ -28,7 +28,9 @@ function getMotorNames(traveller: TravellerRecord): string {
 
 function getNetworkFolderNames(traveller: TravellerRecord): string {
   const notes = getStepNotes(traveller, 'Update Network Save Location');
-  const marker = 'Folders found:';
+  const marker = notes.includes('Customer data folders found:')
+    ? 'Customer data folders found:'
+    : 'Folders found:';
   const markerIndex = notes.indexOf(marker);
   if (markerIndex < 0) return '';
   return notes
@@ -47,6 +49,17 @@ function getSavedWireKey(traveller: TravellerRecord): string {
     if (key) return key;
   }
   return '';
+}
+
+function focusNextInputOnEnter(event: React.KeyboardEvent<HTMLInputElement>) {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  const container = event.currentTarget.closest('[data-enter-navigation]');
+  const inputs = Array.from(
+    container?.querySelectorAll<HTMLInputElement>('input[data-enter-next]') || []
+  );
+  const nextInput = inputs[inputs.indexOf(event.currentTarget) + 1];
+  nextInput?.focus();
 }
 
 function SystemDetailsModalContent({
@@ -78,7 +91,7 @@ function SystemDetailsModalContent({
   const combinations = (traveller.laserGratingCombinations || [])
     .filter((combination) => combination.wavelengthNm && combination.gratingDensityLinesPerMm)
     .map((combination) =>
-      `${Number(combination.wavelengthNm)}nm_${Number(combination.gratingDensityLinesPerMm)}`
+      `${combination.cutoffValue ? `${combination.cutoffValue} cm⁻¹_` : ''}${Number(combination.wavelengthNm)}nm_${Number(combination.gratingDensityLinesPerMm)} lmm (PL: ${combination.pl ? 'Yes' : 'No'})`
     )
     .join(', ');
   const extraDataNotes = getStepNotes(traveller, 'Create Extra Data Files');
@@ -136,7 +149,7 @@ function SystemDetailsModalContent({
 
         <form onSubmit={handleApply} className="p-5 space-y-4 text-xs text-slate-300 overflow-y-auto">
           <div className="overflow-hidden rounded-lg border border-slate-800">
-            <table className="w-full border-collapse">
+            <table className="w-full border-collapse" data-enter-navigation>
               <thead className="bg-slate-950 text-left uppercase tracking-wide text-[10px] text-slate-400">
                 <tr>
                   <th className="w-2/5 border-b border-slate-800 px-3 py-2">Detail Name</th>
@@ -149,20 +162,20 @@ function SystemDetailsModalContent({
                   <td className="px-3 py-2">{traveller.system}</td>
                 </tr>
                 <tr>
-                  <td className="px-3 py-2 text-slate-300"><User className="mr-2 inline h-3.5 w-3.5 text-blue-400" />Customer Name</td>
-                  <td className="px-3 py-1.5"><input aria-label="Customer Name" className={textInputClass} value={customerName} onChange={(event) => setCustomerName(event.target.value)} /></td>
-                </tr>
-                <tr>
                   <td className="px-3 py-2 text-slate-300"><Hash className="mr-2 inline h-3.5 w-3.5 text-blue-400" />Serial Number</td>
-                  <td className="px-3 py-1.5"><input aria-label="Serial Number" className={textInputClass} value={serialNumber} onChange={(event) => setSerialNumber(event.target.value)} /></td>
-                </tr>
-                <tr>
-                  <td className="px-3 py-2 text-slate-300"><Tag className="mr-2 inline h-3.5 w-3.5 text-blue-400" />Part Number</td>
-                  <td className="px-3 py-1.5"><input aria-label="Part Number" className={textInputClass} value={partNumber} onChange={(event) => setPartNumber(event.target.value)} /></td>
+                  <td className="px-3 py-1.5"><input data-enter-next aria-label="Serial Number" className={textInputClass} value={serialNumber} onChange={(event) => setSerialNumber(event.target.value)} onKeyDown={focusNextInputOnEnter} /></td>
                 </tr>
                 <tr>
                   <td className="px-3 py-2 text-slate-300"><Briefcase className="mr-2 inline h-3.5 w-3.5 text-blue-400" />Job Number</td>
-                  <td className="px-3 py-1.5"><input aria-label="Job Number" className={textInputClass} value={jobNumber} onChange={(event) => setJobNumber(event.target.value)} /></td>
+                  <td className="px-3 py-1.5"><input data-enter-next aria-label="Job Number" className={textInputClass} value={jobNumber} onChange={(event) => setJobNumber(event.target.value)} onKeyDown={focusNextInputOnEnter} /></td>
+                </tr>
+                <tr>
+                  <td className="px-3 py-2 text-slate-300"><Tag className="mr-2 inline h-3.5 w-3.5 text-blue-400" />Part Number</td>
+                  <td className="px-3 py-1.5"><input data-enter-next aria-label="Part Number" className={textInputClass} value={partNumber} onChange={(event) => setPartNumber(event.target.value)} onKeyDown={focusNextInputOnEnter} /></td>
+                </tr>
+                <tr>
+                  <td className="px-3 py-2 text-slate-300"><User className="mr-2 inline h-3.5 w-3.5 text-blue-400" />Customer Name</td>
+                  <td className="px-3 py-1.5"><input data-enter-next aria-label="Customer Name" className={textInputClass} value={customerName} onChange={(event) => setCustomerName(event.target.value)} onKeyDown={focusNextInputOnEnter} /></td>
                 </tr>
                 <tr>
                   <td className="px-3 py-2 text-slate-300"><KeyRound className="mr-2 inline h-3.5 w-3.5 text-indigo-400" />WiRE Key</td>
@@ -175,10 +188,12 @@ function SystemDetailsModalContent({
                       <input
                         aria-label={`WiRE Password ${index + 1}`}
                         className={textInputClass}
+                        data-enter-next
                         value={password}
                         onChange={(event) => setWirePasswords((current) =>
                           current.map((value, valueIndex) => valueIndex === index ? event.target.value : value)
                         )}
+                        onKeyDown={focusNextInputOnEnter}
                       />
                     </td>
                   </tr>
@@ -196,7 +211,7 @@ function SystemDetailsModalContent({
                   <td className="px-3 py-2">{motorNames || 'Not recorded'}</td>
                 </tr>
                 <tr>
-                  <td className="px-3 py-2 text-slate-300"><FolderOpen className="mr-2 inline h-3.5 w-3.5 text-amber-400" />Existing Folder Names on Network</td>
+                  <td className="px-3 py-2 text-slate-300"><FolderOpen className="mr-2 inline h-3.5 w-3.5 text-amber-400" />Folders Found on Network</td>
                   <td className="px-3 py-2 break-words">{networkFolderNames || 'Not recorded'}</td>
                 </tr>
                 <tr>

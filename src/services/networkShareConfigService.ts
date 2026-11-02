@@ -11,6 +11,8 @@ export interface NetworkShareLocation {
 
 const STORAGE_KEY_NETWORK_SHARES = 'digital_traveller_network_share_configs_v2';
 const STORAGE_KEY_NETWORK_SAVE_LOCATIONS = 'digital_traveller_network_save_locations_v1';
+const CURRENT_TEST_SHEETS_ROOT =
+  '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Final Test\\Current Test Sheets';
 
 const DEFAULT_NETWORK_SAVE_LOCATIONS: Record<string, string> = {
   inVia: '\\\\renishaw.com\\global\\gb\\PLC\\SPD\\Data\\SPD_Data\\Operations\\Production\\Test\\Final Test Data\\InVia\\000000_INLUX0726-11_CDC\\Internal data\\Digital Test Sheets\\',
@@ -34,14 +36,14 @@ export const DEFAULT_NETWORK_CONFIGS: Record<string, [NetworkShareLocation, Netw
       id: 'invia-test-acceptance',
       name: 'Test Acceptance Record.xlsm',
       category: 'Test Acceptance Record',
-      path: '',
+      path: `${CURRENT_TEST_SHEETS_ROOT}\\Test Acceptance Record.xlsm`,
       description: 'Master Test Acceptance Record workbook'
     },
     {
       id: 'invia-minor-deviation',
       name: 'Minor Deviation Log.xlsm',
       category: 'Minor Deviation Log',
-      path: '',
+      path: `${CURRENT_TEST_SHEETS_ROOT}\\Minor Deviation Record.xlsm`,
       description: 'Master Minor Deviation Log workbook'
     }
   ],
@@ -57,14 +59,14 @@ export const DEFAULT_NETWORK_CONFIGS: Record<string, [NetworkShareLocation, Netw
       id: 'virsa-test-acceptance',
       name: 'Test Acceptance Record.xlsm',
       category: 'Test Acceptance Record',
-      path: '',
+      path: `${CURRENT_TEST_SHEETS_ROOT}\\VIRSA Test Acceptance Record.xlsm`,
       description: 'Master Test Acceptance Record workbook'
     },
     {
       id: 'virsa-minor-deviation',
       name: 'Minor Deviation Log.xlsm',
       category: 'Minor Deviation Log',
-      path: '',
+      path: `${CURRENT_TEST_SHEETS_ROOT}\\VIRSA Minor Deviation Record.xlsm`,
       description: 'Master Minor Deviation Log workbook'
     }
   ],
@@ -80,14 +82,14 @@ export const DEFAULT_NETWORK_CONFIGS: Record<string, [NetworkShareLocation, Netw
       id: 'inlux-test-acceptance',
       name: 'Test Acceptance Record.xlsm',
       category: 'Test Acceptance Record',
-      path: '',
+      path: `${CURRENT_TEST_SHEETS_ROOT}\\inLux Test Acceptance Record.xlsm`,
       description: 'Master Test Acceptance Record workbook'
     },
     {
       id: 'inlux-minor-deviation',
       name: 'Minor Deviation Log.xlsm',
       category: 'Minor Deviation Log',
-      path: '',
+      path: `${CURRENT_TEST_SHEETS_ROOT}\\inLux Minor Deviation Record.xlsm`,
       description: 'Master Minor Deviation Log workbook'
     }
   ]
@@ -178,11 +180,20 @@ export class NetworkShareConfigService {
       }
     });
 
-    // Ensure built-in systems have defaults if missing
+    // Ensure built-in systems have defaults if missing and fill unconfigured paths.
     Object.keys(DEFAULT_NETWORK_CONFIGS).forEach((sys) => {
       if (!configs[sys]) {
-        configs[sys] = DEFAULT_NETWORK_CONFIGS[sys];
+        configs[sys] = DEFAULT_NETWORK_CONFIGS[sys].map((location) => ({ ...location })) as
+          [NetworkShareLocation, NetworkShareLocation, NetworkShareLocation];
+        migratedLocations = true;
+        return;
       }
+      const defaults = DEFAULT_NETWORK_CONFIGS[sys];
+      configs[sys] = configs[sys].map((location, index) => {
+        if (location.path.trim()) return location;
+        migratedLocations = true;
+        return { ...location, path: defaults[index].path };
+      }) as [NetworkShareLocation, NetworkShareLocation, NetworkShareLocation];
     });
 
     // Ensure any custom added system has 3 configured locations

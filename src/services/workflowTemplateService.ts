@@ -4,6 +4,7 @@ import { SystemRegistryService } from './systemRegistryService';
 import {
   LASER_GRATING_FILES_SAVE_INSTRUCTION,
   LASER_GRATING_SELECTION_STEP_NAME,
+  LEGACY_LASER_GRATING_SELECTION_STEP_NAME,
   CREATE_TEST_SHEETS_STEP_NAME,
   CREATE_TEST_SHEETS_STEP_INSTRUCTIONS,
   PAT_TEST_STEP_NAME,
@@ -135,6 +136,33 @@ function ensureTestSheetsStepAfterSelection(
   return orderedSteps;
 }
 
+function ensureSystemFoldersStepAfterSelection(
+  steps: WorkflowTemplateItem[]
+): WorkflowTemplateItem[] {
+  const folderIndex = steps.findIndex((step) => step.name === SYSTEM_FOLDERS_STEP_NAME);
+  const selectionIndex = steps.findIndex(
+    (step) => step.name === LASER_GRATING_SELECTION_STEP_NAME
+  );
+  if (folderIndex < 0 || selectionIndex < 0 || folderIndex === selectionIndex + 1) {
+    return steps.map((step) =>
+      step.name === SYSTEM_FOLDERS_STEP_NAME
+        ? { ...step, instructions: [...SYSTEM_FOLDERS_STEP_INSTRUCTIONS] }
+        : step
+    );
+  }
+
+  const orderedSteps = [...steps];
+  const [folderStep] = orderedSteps.splice(folderIndex, 1);
+  const updatedSelectionIndex = orderedSteps.findIndex(
+    (step) => step.name === LASER_GRATING_SELECTION_STEP_NAME
+  );
+  orderedSteps.splice(updatedSelectionIndex + 1, 0, {
+    ...folderStep,
+    instructions: [...SYSTEM_FOLDERS_STEP_INSTRUCTIONS]
+  });
+  return orderedSteps;
+}
+
 function normalizeInViaVirsaTemplateSteps(
   steps: WorkflowTemplateItem[],
   system: SystemType
@@ -142,9 +170,11 @@ function normalizeInViaVirsaTemplateSteps(
   const profileDefaults = SYSTEM_PROFILES[system]?.defaultSteps || [];
   const existingSteps = steps.map((step) => ({
     ...step,
-    name: step.name === 'Fiber Probe Head Coupling & Shutter Test'
-      ? 'Fibre Probe Head Coupling & Shutter Test'
-      : step.name
+    name: step.name === LEGACY_LASER_GRATING_SELECTION_STEP_NAME
+      ? LASER_GRATING_SELECTION_STEP_NAME
+      : step.name === 'Fiber Probe Head Coupling & Shutter Test'
+        ? 'Fibre Probe Head Coupling & Shutter Test'
+        : step.name
   }));
   const findExisting = (name: string) => existingSteps.find((step) => step.name === name);
   const findProfileDefault = (name: string) => {
@@ -182,7 +212,14 @@ function normalizeInViaVirsaTemplateSteps(
     if (!step) {
       throw new Error(`Missing default workflow step "${name}" for ${system}.`);
     }
-    return { ...step, name, stage: 'Set Up' };
+    return {
+      ...step,
+      name,
+      stage: 'Set Up',
+      ...(name === SYSTEM_FOLDERS_STEP_NAME
+        ? { instructions: [...SYSTEM_FOLDERS_STEP_INSTRUCTIONS] }
+        : {})
+    };
   });
   const preSystemTestStep = system === 'inVia'
     ? {
@@ -260,7 +297,11 @@ export class WorkflowTemplateService {
           const steps = parsed.steps.map((s) => ({
             ...s,
             stage: s.stage === 'Setup' ? 'Set Up' : s.stage,
-            name: s.name === LEGACY_SYSTEM_UNBOXING_STEP_NAME ? SYSTEM_UNBOXING_STEP_NAME : s.name,
+            name: s.name === LEGACY_LASER_GRATING_SELECTION_STEP_NAME
+              ? LASER_GRATING_SELECTION_STEP_NAME
+              : s.name === LEGACY_SYSTEM_UNBOXING_STEP_NAME
+                ? SYSTEM_UNBOXING_STEP_NAME
+                : s.name,
             ...(s.name === PRE_SYSTEM_TEST_STEP_NAME
               ? {
                   instructions: [...PRE_SYSTEM_TEST_STEP_INSTRUCTIONS],
@@ -273,8 +314,10 @@ export class WorkflowTemplateService {
           const isInViaOrVirsa = normalizedSystem === 'inVia' || normalizedSystem === 'Virsa';
           const normalizedSteps = isInViaOrVirsa
             ? normalizeInViaVirsaTemplateSteps(steps, normalizedSystem)
-            : ensureNetworkSaveLocationStepAfterDetails(
-                ensureTestSheetsStepAfterSelection(steps, normalizedSystem)
+            : ensureSystemFoldersStepAfterSelection(
+                ensureNetworkSaveLocationStepAfterDetails(
+                  ensureTestSheetsStepAfterSelection(steps, normalizedSystem)
+                )
               );
           const updatedTemplate: WorkflowTemplate = {
             ...parsed,
@@ -285,9 +328,8 @@ export class WorkflowTemplateService {
             lastUpdated: parsed.lastUpdated || new Date().toISOString()
           };
           if (
-            isInViaOrVirsa &&
-            (parsed.version !== '2.5.0' ||
-              JSON.stringify(parsed.steps) !== JSON.stringify(normalizedSteps))
+            (isInViaOrVirsa && parsed.version !== '2.5.0') ||
+            JSON.stringify(parsed.steps) !== JSON.stringify(normalizedSteps)
           ) {
             this.saveTemplate(updatedTemplate);
           }
@@ -334,9 +376,16 @@ export class WorkflowTemplateService {
           RECORD_SYSTEM_DETAILS_TEMPLATE_STEP,
           SAVE_WIRE_PASSWORDS_TEMPLATE_STEP,
           UPDATE_NETWORK_SAVE_LOCATION_TEMPLATE_STEP,
-          SYSTEM_FOLDERS_TEMPLATE_STEP,
           ...otherSteps
         ];
+        const laserSelectionIndex = defaultSteps.findIndex(
+          (step) => step.name === LASER_GRATING_SELECTION_STEP_NAME
+        );
+        if (laserSelectionIndex >= 0) {
+          defaultSteps.splice(laserSelectionIndex + 1, 0, SYSTEM_FOLDERS_TEMPLATE_STEP);
+        } else {
+          defaultSteps.push(SYSTEM_FOLDERS_TEMPLATE_STEP);
+        }
       } else {
         defaultSteps = profile.defaultSteps.map((s) => ({
           name: s.name,
@@ -361,9 +410,16 @@ export class WorkflowTemplateService {
           },
           RECORD_SYSTEM_DETAILS_TEMPLATE_STEP,
           SAVE_WIRE_PASSWORDS_TEMPLATE_STEP,
-          UPDATE_NETWORK_SAVE_LOCATION_TEMPLATE_STEP,
-          SYSTEM_FOLDERS_TEMPLATE_STEP
+          UPDATE_NETWORK_SAVE_LOCATION_TEMPLATE_STEP
         );
+        const laserSelectionIndex = defaultSteps.findIndex(
+          (step) => step.name === LASER_GRATING_SELECTION_STEP_NAME
+        );
+        if (laserSelectionIndex >= 0) {
+          defaultSteps.splice(laserSelectionIndex + 1, 0, SYSTEM_FOLDERS_TEMPLATE_STEP);
+        } else {
+          defaultSteps.push(SYSTEM_FOLDERS_TEMPLATE_STEP);
+        }
       }
     } else {
       // Default placeholder workflows for newly created custom systems

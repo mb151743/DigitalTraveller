@@ -5,6 +5,7 @@ import {
   LASER_GRATING_FILES_SAVE_INSTRUCTION,
   LASER_GRATING_FILES_STEP_NAME,
   LASER_GRATING_SELECTION_STEP_NAME,
+  LEGACY_LASER_GRATING_SELECTION_STEP_NAME,
   CREATE_TEST_SHEETS_STEP_NAME,
   PAT_TEST_STEP_NAME,
   PRE_SYSTEM_TEST_STEP_NAME,
@@ -323,7 +324,9 @@ export class StorageService {
         step.name === 'CCD Detector Cooling & Dark Count Test'
         ? 'Calibration'
         : step.stage === 'Setup' ? 'Set Up' : step.stage,
-      name: step.name === LEGACY_SYSTEM_UNBOXING_STEP_NAME
+      name: step.name === LEGACY_LASER_GRATING_SELECTION_STEP_NAME
+        ? LASER_GRATING_SELECTION_STEP_NAME
+        : step.name === LEGACY_SYSTEM_UNBOXING_STEP_NAME
         ? SYSTEM_UNBOXING_STEP_NAME
         : step.name === 'Fiber Probe Head Coupling & Shutter Test'
           ? 'Fibre Probe Head Coupling & Shutter Test'
@@ -468,7 +471,11 @@ export class StorageService {
 
       const existingFolderStep = existingSteps.find((s) => s.name === SYSTEM_FOLDERS_STEP_NAME);
       const folderStep: WorkflowStep = existingFolderStep
-        ? { ...existingFolderStep, stage: 'Set Up' }
+        ? {
+            ...existingFolderStep,
+            stage: 'Set Up',
+            instructions: [...SYSTEM_FOLDERS_STEP_INSTRUCTIONS]
+          }
         : {
             id: `step-${record.system}-system-folders-${Date.now().toString(36)}`,
             name: SYSTEM_FOLDERS_STEP_NAME,
@@ -558,7 +565,10 @@ export class StorageService {
               gratingDensityLinesPerMm:
                 typeof combination?.gratingDensityLinesPerMm === 'string'
                   ? combination.gratingDensityLinesPerMm
-                  : ''
+                  : '',
+              cutoffValue:
+                typeof combination?.cutoffValue === 'string' ? combination.cutoffValue : '',
+              pl: typeof combination?.pl === 'boolean' ? combination.pl : false
             }))
           : []
       };
@@ -656,7 +666,11 @@ export class StorageService {
 
     const existingSystemFolderStep = existingSteps.find((step) => step.name === SYSTEM_FOLDERS_STEP_NAME);
     const systemFolderStep: WorkflowStep = existingSystemFolderStep
-      ? { ...existingSystemFolderStep, stage: 'Set Up' }
+      ? {
+          ...existingSystemFolderStep,
+          stage: 'Set Up',
+          instructions: [...SYSTEM_FOLDERS_STEP_INSTRUCTIONS]
+        }
       : {
           id: `step-${record.system}-system-folders-${Date.now().toString(36)}`,
           name: SYSTEM_FOLDERS_STEP_NAME,
@@ -759,9 +773,16 @@ export class StorageService {
       detailsStep,
       saveWirePasswordsStep,
       networkSaveLocationStep,
-      systemFolderStep,
       ...orderedOtherSteps
     ];
+    const selectionIndex = genericSteps.findIndex(
+      (step) => step.name === LASER_GRATING_SELECTION_STEP_NAME
+    );
+    if (selectionIndex >= 0) {
+      genericSteps.splice(selectionIndex + 1, 0, systemFolderStep);
+    } else {
+      genericSteps.push(systemFolderStep);
+    }
     const finalSteps = record.system === 'Virsa'
       ? normalizeInViaVirsaWorkflowSteps(genericSteps)
       : genericSteps;
@@ -777,7 +798,10 @@ export class StorageService {
             gratingDensityLinesPerMm:
               typeof combination?.gratingDensityLinesPerMm === 'string'
                 ? combination.gratingDensityLinesPerMm
-                : ''
+                : '',
+            cutoffValue:
+              typeof combination?.cutoffValue === 'string' ? combination.cutoffValue : '',
+            pl: typeof combination?.pl === 'boolean' ? combination.pl : false
           }))
         : []
     };

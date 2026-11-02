@@ -5,6 +5,7 @@ import {
   TestSheetResult,
   DigitalTestSheetMetadata,
   DigitalTestSheetCellMappings,
+  NetworkSystemFolderSearchOperationResult,
   NetworkSaveLocationOperationResult,
   MotorScanEntry,
   MotorScanSaveResult
@@ -77,8 +78,14 @@ declare global {
         serialNumber: string,
         partNumber: string,
         customerName: string,
-        configuredLocation: string
+        configuredLocation: string,
+        existingFolderName?: string
       ) => Promise<NetworkSaveLocationOperationResult>;
+      findNetworkSystemFolder: (
+        partNumber: string,
+        customerName: string,
+        configuredLocation: string
+      ) => Promise<NetworkSystemFolderSearchOperationResult>;
       saveMotorScanResults: (
         systemFolderPath: string,
         serialNumber: string,

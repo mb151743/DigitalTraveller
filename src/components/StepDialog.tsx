@@ -7,6 +7,8 @@ import {
   DigitalTestSheetMetadata,
   MotorScanEntry,
   MotorScanSaveResult,
+  NetworkSystemFolderSearchOperationResult,
+  NetworkSystemFolderSearchResult,
   NetworkSaveLocationOperationResult,
   WorkflowStep,
   StepStatus
@@ -21,6 +23,7 @@ import {
   SAVE_WIRE_PASSWORDS_STEP_NAME,
   SYSTEM_FOLDERS_STEP_NAME,
   CREATE_TEST_SHEETS_STEP_NAME,
+  parseLaserGratingCombinationFolder,
   validateLaserGratingCombinations
 } from '../services/laserGratingWorkflow';
 import { LaserGratingStepPanel } from './LaserGratingStepPanel';
@@ -104,7 +107,10 @@ interface StepDialogProps {
   onUpdateLaserGratingCombinations: (combinations: LaserGratingCombination[]) => void;
   onCreateLaserGratingFiles: (overwrite: boolean) => Promise<LaserGratingFileResult>;
   onCreateSystemFolders: () => Promise<SystemFolderResult>;
-  onUpdateNetworkSaveLocation: () => Promise<NetworkSaveLocationOperationResult>;
+  onFindNetworkSystemFolder: () => Promise<NetworkSystemFolderSearchOperationResult>;
+  onUpdateNetworkSaveLocation: (
+    existingFolderName?: string
+  ) => Promise<NetworkSaveLocationOperationResult>;
   onNetworkSystemFolderUpdated: (directory: string) => void;
   onSaveMotorScanResults: (entries: MotorScanEntry[]) => Promise<MotorScanSaveResult>;
   system: string;
@@ -143,6 +149,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   onUpdateLaserGratingCombinations,
   onCreateLaserGratingFiles,
   onCreateSystemFolders,
+  onFindNetworkSystemFolder,
   onUpdateNetworkSaveLocation,
   onNetworkSystemFolderUpdated,
   onSaveMotorScanResults,
@@ -161,6 +168,8 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   const [motorScanEntries, setMotorScanEntries] = useState<MotorScanEntry[]>([]);
   const [networkFolderNames, setNetworkFolderNames] = useState<string[]>([]);
   const [networkSystemFolder, setNetworkSystemFolder] = useState('');
+  const [networkFolderSearch, setNetworkFolderSearch] =
+    useState<NetworkSystemFolderSearchResult | null>(null);
   const [isTestSheetDataPromptOpen, setIsTestSheetDataPromptOpen] = useState(false);
   const [testSheetMetadata, setTestSheetMetadata] = useState<DigitalTestSheetMetadata>({
     jobNumber,
@@ -196,15 +205,19 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
     setCompletionError(null);
     setNetworkFolderNames([]);
     setNetworkSystemFolder('');
+    setNetworkFolderSearch(null);
     setHasStartedMotorScan(false);
     setMotorScanEntries([]);
-  }, [step, operatorName]);
+  }, [step.id, operatorName]);
 
   useEffect(() => {
     setLocalSerial(serialNumber || '');
     setLocalCustomer(customerName || '');
     setLocalJob(jobNumber || '');
     setLocalPart(partNumber || '');
+    setNetworkFolderSearch(null);
+    setNetworkFolderNames([]);
+    setNetworkSystemFolder('');
   }, [serialNumber, customerName, jobNumber, partNumber, isOpen]);
 
   useEffect(() => {
@@ -246,6 +259,17 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
         partNumber: p
       });
     }
+  };
+
+  const handleSystemDetailsEnter = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    syncDetailsIfChanged();
+    const container = event.currentTarget.closest('[data-enter-navigation]');
+    const inputs = Array.from(
+      container?.querySelectorAll<HTMLInputElement>('input[data-enter-next]') || []
+    );
+    inputs[inputs.indexOf(event.currentTarget) + 1]?.focus();
   };
 
   const handleDetailChange = (field: 'serial' | 'customer' | 'job' | 'part', value: string) => {
@@ -304,11 +328,58 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
     }
   };
 
+  const handleFindNetworkSystemFolder = async () => {
+    setIsUpdatingNetworkLocation(true);
+    setCompletionError(null);
+    setNetworkFolderSearch(null);
+    try {
+      const result = await onFindNetworkSystemFolder();
+      if (!result.success) {
+        setCompletionError(result.error);
+        return;
+      }
+      setNetworkFolderSearch(result);
+      const searchReport = [
+        `Part Number search: ${result.folderName || 'No existing folder found'}`,
+        `Customer Name check: ${
+          result.customerNameMatches === null
+            ? 'No existing folder to check'
+            : result.customerNameMatches
+              ? `matched "${result.existingCustomerName}"`
+              : `mismatch: folder has "${result.existingCustomerName}", System Details has "${customerName}"`
+        }`,
+        'Customer data folders found:',
+        ...(result.customerDataFolderNames.length > 0
+          ? result.customerDataFolderNames.map((name) => `- ${name}`)
+          : ['- (none)'])
+      ].join('\n');
+      setNotes(searchReport);
+      onUpdateStatus(
+        step.id,
+        step.status === 'Complete' ? 'In Progress' : step.status,
+        searchReport,
+        signoffTechnician
+      );
+    } catch (error) {
+      setCompletionError(
+        error instanceof Error ? error.message : 'Could not find a network system folder.'
+      );
+    } finally {
+      setIsUpdatingNetworkLocation(false);
+    }
+  };
+
   const handleUpdateNetworkSaveLocation = async () => {
+    if (!networkFolderSearch) {
+      setCompletionError('Complete Part 1 and find the existing folder before continuing.');
+      return;
+    }
     setIsUpdatingNetworkLocation(true);
     setCompletionError(null);
     try {
-      const result = await onUpdateNetworkSaveLocation();
+      const result = await onUpdateNetworkSaveLocation(
+        networkFolderSearch.folderName || undefined
+      );
       if (!result.success) {
         setCompletionError(result.error);
         return;
@@ -317,16 +388,30 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
       onNetworkSystemFolderUpdated(result.directory);
       setNetworkSystemFolder(result.directory);
       setNetworkFolderNames(result.folderNames);
+      const importedCombinations = networkFolderSearch.customerDataFolderNames
+        .map(parseLaserGratingCombinationFolder)
+        .filter((combination): combination is LaserGratingCombination => combination !== null);
+      if (importedCombinations.length > 0) {
+        onUpdateLaserGratingCombinations(importedCombinations);
+      }
       const report = [
         `Network system folder: ${result.directory}`,
+        `Part Number search: ${networkFolderSearch.folderName || 'No existing folder found'}`,
+        `Customer Name check: ${
+          networkFolderSearch.customerNameMatches === null
+            ? 'No existing folder to check'
+            : networkFolderSearch.customerNameMatches
+              ? `matched "${networkFolderSearch.existingCustomerName}"`
+              : `mismatch: folder has "${networkFolderSearch.existingCustomerName}", System Details has "${customerName}"`
+        }`,
         result.renamed
           ? 'Existing folder renamed to include the system serial number.'
           : result.created
           ? 'Created a new network system folder.'
           : 'Existing network system folder already has the correct name.',
-        'Folders found:',
-        ...(result.folderNames.length > 0
-          ? result.folderNames.map((name) => `- ${name}`)
+        'Customer data folders found:',
+        ...(networkFolderSearch.customerDataFolderNames.length > 0
+          ? networkFolderSearch.customerDataFolderNames.map((name) => `- ${name}`)
           : ['- (none)'])
       ].join('\n');
       setNotes(report);
@@ -655,26 +740,86 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
           {isSystemFoldersStep && (
             <div className="rounded-lg border border-blue-800/70 bg-blue-950/30 p-3 text-xs text-slate-300">
               Completing this step creates the system folder and its standard Customer data and
-              Internal data subfolders in the configured Save location.
+              Internal data subfolders in the configured Save location. Probe 1 is not created at this stage.
             </div>
           )}
 
           {isUpdateNetworkSaveLocationStep && (
             <section className="space-y-3 rounded-lg border border-blue-800/70 bg-blue-950/30 p-4">
               <p className="text-xs text-slate-300">
-                Find the existing network folder by Part Number and Customer Name, add the Serial
-                Number to its name, or create a new folder. The folders already inside it will be
-                listed and saved in this step.
+                <strong>Part 1 — Find:</strong> Search by Part Number, check whether the folder&apos;s
+                Customer Name matches System Details, and list laser/grating folders in Customer data.
               </p>
               <button
                 type="button"
-                onClick={handleUpdateNetworkSaveLocation}
+                onClick={handleFindNetworkSystemFolder}
                 disabled={isUpdatingNetworkLocation}
                 className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
               >
                 <FolderOpen className="h-4 w-4" />
-                {isUpdatingNetworkLocation ? 'Updating network folder…' : 'Find or Create Network Folder'}
+                {isUpdatingNetworkLocation ? 'Searching network folders…' : 'Find Existing Folder'}
               </button>
+              {networkFolderSearch && (
+                <div className="space-y-3 rounded border border-slate-700 bg-slate-950/60 p-3">
+                  {networkFolderSearch.folderName ? (
+                    <>
+                      <p className="break-all font-mono text-[11px] text-slate-200">
+                        Found: {networkFolderSearch.folderName}
+                      </p>
+                      <p className={`text-[11px] ${
+                        networkFolderSearch.customerNameMatches
+                          ? 'text-emerald-300'
+                          : 'text-amber-300'
+                      }`}>
+                        {networkFolderSearch.customerNameMatches
+                          ? `Customer Name matches System Details (${networkFolderSearch.existingCustomerName}).`
+                          : `Customer Name mismatch: folder has "${networkFolderSearch.existingCustomerName}", but System Details has "${customerName}". Part 2 will preserve the folder Customer Name and update only its Serial Number.`}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-[11px] text-slate-300">
+                      No existing folder matches Part Number <strong>{partNumber}</strong>.
+                    </p>
+                  )}
+                  {networkFolderSearch.folderName && (
+                    <div>
+                      <p className="text-[11px] font-semibold text-slate-300">
+                        Customer data folders
+                      </p>
+                      {networkFolderSearch.customerDataFolderNames.length > 0 ? (
+                        <ul className="mt-1 list-inside list-disc space-y-1 break-all text-[11px] text-slate-400">
+                          {networkFolderSearch.customerDataFolderNames.map((name) => (
+                            <li key={name}>{name}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-1 text-[11px] text-slate-500">(none)</p>
+                      )}
+                    </div>
+                  )}
+                  <div>
+                    <p className="mb-2 text-xs text-slate-300">
+                      <strong>Part 2 — Rename or create:</strong>{' '}
+                      {networkFolderSearch.folderName
+                        ? 'Add the Serial Number to the matching folder name and import any recognized laser/grating combinations.'
+                        : 'Create a new system folder.'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleUpdateNetworkSaveLocation}
+                      disabled={isUpdatingNetworkLocation}
+                      className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+                    >
+                      <FolderOpen className="h-4 w-4" />
+                      {isUpdatingNetworkLocation
+                        ? 'Updating network folder…'
+                        : networkFolderSearch.folderName
+                          ? 'Update Serial Number'
+                          : 'Create New Folder'}
+                    </button>
+                  </div>
+                </div>
+              )}
               {networkSystemFolder && (
                 <div className="rounded border border-slate-700 bg-slate-950/60 p-3">
                   <p className="break-all font-mono text-[11px] text-emerald-300">{networkSystemFolder}</p>
@@ -790,7 +935,10 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div
+                className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs"
+                data-enter-navigation
+              >
                 {/* Serial Number */}
                 <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
                   <label className="block text-[11px] font-semibold text-slate-400 mb-1 flex items-center gap-1.5">
@@ -798,26 +946,13 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
                     <span>Serial Number (S/N)</span>
                   </label>
                   <input
+                    data-enter-next
                     type="text"
                     value={localSerial}
                     onChange={(e) => handleDetailChange('serial', e.target.value)}
+                    onKeyDown={handleSystemDetailsEnter}
                     placeholder="e.g. 12341234"
                     className="w-full rounded border border-slate-700 bg-slate-950 px-2.5 py-1.5 font-mono text-xs font-semibold text-blue-400 placeholder-slate-600 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-
-                {/* Customer Name */}
-                <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
-                  <label className="block text-[11px] font-semibold text-slate-400 mb-1 flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-blue-400" />
-                    <span>Customer Name</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={localCustomer}
-                    onChange={(e) => handleDetailChange('customer', e.target.value)}
-                    placeholder="e.g. Spunkt Team"
-                    className="w-full rounded border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
 
@@ -828,9 +963,11 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
                     <span>Job Number</span>
                   </label>
                   <input
+                    data-enter-next
                     type="text"
                     value={localJob}
                     onChange={(e) => handleDetailChange('job', e.target.value)}
+                    onKeyDown={handleSystemDetailsEnter}
                     placeholder="e.g. 123951829431"
                     className="w-full rounded border border-slate-700 bg-slate-950 px-2.5 py-1.5 font-mono text-xs text-slate-100 placeholder-slate-600 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
@@ -843,11 +980,30 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
                     <span>Part Number</span>
                   </label>
                   <input
+                    data-enter-next
                     type="text"
                     value={localPart}
                     onChange={(e) => handleDetailChange('part', e.target.value)}
+                    onKeyDown={handleSystemDetailsEnter}
                     placeholder="e.g. INVIA LONG NUMBER"
                     className="w-full rounded border border-slate-700 bg-slate-950 px-2.5 py-1.5 font-mono text-xs text-slate-100 placeholder-slate-600 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Customer Name */}
+                <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1 flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Customer Name</span>
+                  </label>
+                  <input
+                    data-enter-next
+                    type="text"
+                    value={localCustomer}
+                    onChange={(e) => handleDetailChange('customer', e.target.value)}
+                    onKeyDown={handleSystemDetailsEnter}
+                    placeholder="e.g. Spunkt Team"
+                    className="w-full rounded border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -1021,7 +1177,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
               Close Without Completing
             </button>
 
-            {!isLaserFilesStep && (
+            {!isLaserFilesStep && !isUpdateNetworkSaveLocationStep && (
               <button
                 type="button"
                 onClick={handleMarkComplete}

@@ -12,8 +12,8 @@ export interface DigitalTestSheetSettings {
 const STORAGE_KEY = 'digital_traveller_virsa_test_sheet_settings_v1';
 
 const EMPTY_SETTINGS: DigitalTestSheetSettings = {
-  powerMeterSerialNumber: '',
-  powerMeterHeadSerialNumber: '',
+  powerMeterSerialNumber: '224',
+  powerMeterHeadSerialNumber: '219',
   cellMappings: {}
 };
 
@@ -21,7 +21,9 @@ export const DEFAULT_DIGITAL_TEST_SHEET_CELL_MAPPINGS: DigitalTestSheetCellMappi
   inVia: {
     jobNumber: 'C3',
     customerName: 'E3',
-    serialNumber: 'H3'
+    serialNumber: 'H3',
+    powerMeterSerialNumber: 'C10',
+    powerMeterHeadSerialNumber: 'E10'
   },
   Virsa: {
     jobNumber: 'C2',
@@ -84,11 +86,14 @@ export class DigitalTestSheetSettingsService {
       }
       return {
         powerMeterSerialNumber:
-          typeof parsed.powerMeterSerialNumber === 'string' ? parsed.powerMeterSerialNumber : '',
+          typeof parsed.powerMeterSerialNumber === 'string' && parsed.powerMeterSerialNumber.trim()
+            ? parsed.powerMeterSerialNumber
+            : '224',
         powerMeterHeadSerialNumber:
-          typeof parsed.powerMeterHeadSerialNumber === 'string'
+          typeof parsed.powerMeterHeadSerialNumber === 'string' &&
+          parsed.powerMeterHeadSerialNumber.trim()
             ? parsed.powerMeterHeadSerialNumber
-            : '',
+            : '219',
         cellMappings
       };
     } catch (error) {

@@ -90,7 +90,7 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
         name: LASER_GRATING_SELECTION_STEP_NAME,
         stage: 'Set Up',
         instructions: [
-          'Enter each laser wavelength in nm and grating density in lines/mm.',
+          'Enter each cutoff value, laser wavelength in nm, grating density in lines/mm, and PL selection.',
           'Add one row for each laser and grating combination used for calibration.'
         ]
       },
@@ -236,7 +236,7 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
         name: LASER_GRATING_SELECTION_STEP_NAME,
         stage: 'Set Up',
         instructions: [
-          'Enter each laser wavelength in nm and grating density in lines/mm.',
+          'Enter each cutoff value, laser wavelength in nm, grating density in lines/mm, and PL selection.',
           'Add one row for each laser and grating combination used for calibration.'
         ]
       },
@@ -354,7 +354,7 @@ export const SYSTEM_PROFILES: Record<SystemType, SystemProfile> = {
         name: LASER_GRATING_SELECTION_STEP_NAME,
         stage: 'Calibration',
         instructions: [
-          'Enter each laser wavelength in nm and grating density in lines/mm.',
+          'Enter each cutoff value, laser wavelength in nm, grating density in lines/mm, and PL selection.',
           'Add one row for each laser and grating combination used for calibration.'
         ]
       },
