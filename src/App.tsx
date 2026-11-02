@@ -1111,7 +1111,7 @@ export const App: React.FC = () => {
       masterSheet.path,
       testAcceptanceRecord.path,
       minorDeviationLog.path,
-      traveller.networkSystemFolderPath,
+      NetworkShareConfigService.getNetworkSaveLocation(traveller.system),
       traveller.laserGratingCombinations || [],
       overwrite,
       testSheetMetadata,

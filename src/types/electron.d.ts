@@ -71,7 +71,7 @@ declare global {
         masterTemplatePath: string,
         testAcceptanceRecordPath: string,
         minorDeviationLogPath: string,
-        systemFolderPath: string | undefined,
+        networkSaveLocation: string,
         combinations: LaserGratingCombination[],
         overwrite: boolean,
         testSheetMetadata?: DigitalTestSheetMetadata,

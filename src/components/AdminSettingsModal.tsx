@@ -846,7 +846,11 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                       handleUpdateNetworkSaveLocation(selectedSystemFilter, event.target.value)
                     }
                     placeholder="Enter a local or UNC network folder path"
-                    className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-mono text-slate-100 focus:border-emerald-500 focus:outline-hidden"
+                    className={`min-w-0 flex-1 rounded-lg border px-3 py-2 text-xs font-mono focus:border-emerald-500 focus:outline-hidden ${
+                      isDark
+                        ? 'border-slate-700 bg-slate-900 text-slate-100 placeholder-slate-500'
+                        : 'border-slate-300 bg-white text-slate-900 placeholder-slate-400'
+                    }`}
                   />
                   <button
                     type="button"

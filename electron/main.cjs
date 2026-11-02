@@ -151,6 +151,16 @@ function setKeepAwake(enabled) {
   updateTrayMenu();
 }
 
+function quitApplication() {
+  app.isQuitting = true;
+  setKeepAwake(false);
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
+  app.quit();
+}
+
 function updateTrayMenu() {
   if (!tray) return;
 
@@ -176,10 +186,7 @@ function updateTrayMenu() {
     { type: 'separator' },
     {
       label: 'Quit Digital Traveller',
-      click: () => {
-        app.isQuitting = true;
-        app.quit();
-      }
+      click: quitApplication
     }
   ]);
 
@@ -294,8 +301,7 @@ ipcMain.on('window-maximize', (event) => {
 
 ipcMain.on('window-close', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
-  // Hide to persistent system tray instead of closing app
-  win?.hide();
+  if (win) quitApplication();
 });
 
 // Direct Network Share File System handlers (Direct UNC / Mapped drive access)
@@ -644,18 +650,69 @@ ipcMain.handle('create-system-folders', async (event, request) => {
   }
 });
 
+async function getTestSheetSystemDirectory(request) {
+  const configuredLocation = typeof request?.networkSaveLocation === 'string'
+    ? request.networkSaveLocation.trim()
+    : '';
+  const configuredRoot = getConfiguredNetworkSystemRoot(configuredLocation);
+  const partNumber = validatePathSegment(request?.partNumber, 'part number');
+  const customerName = validatePathSegment(request?.customerName, 'customer name');
+  const serialNumber = validatePathSegment(request?.serialNumber, 'serial number');
+  const configuredFolderName = path.basename(path.resolve(configuredLocation));
+  if (
+    getFolderCustomerName(configuredFolderName, partNumber)?.toLowerCase() ===
+    customerName.toLowerCase()
+  ) {
+    return path.resolve(configuredLocation);
+  }
+
+  let rootStats;
+  try {
+    rootStats = await fs.promises.stat(configuredRoot);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      throw new Error(`The Network Save Location does not exist: ${configuredRoot}`);
+    }
+    throw error;
+  }
+  if (!rootStats.isDirectory()) {
+    throw new Error('The configured Network Save Location is not a folder.');
+  }
+
+  const entries = await fs.promises.readdir(configuredRoot, { withFileTypes: true });
+  const matches = getPartNumberMatches(entries, partNumber);
+  if (matches.length > 1) {
+    throw new Error(
+      `More than one network folder matches Part Number "${partNumber}". Resolve the duplicates manually.`
+    );
+  }
+
+  if (matches.length === 1) {
+    const existingCustomerName = getFolderCustomerName(matches[0].name, partNumber);
+    if (!existingCustomerName || existingCustomerName.toLowerCase() !== customerName.toLowerCase()) {
+      throw new Error(
+        `The matching Part Number folder has a different Customer Name. Complete Update Network Save Location before creating test sheets.`
+      );
+    }
+    return path.join(configuredRoot, matches[0].name);
+  }
+
+  return getSystemDirectory({
+    ...request,
+    systemFolderPath: undefined,
+    saveLocation: configuredRoot,
+    serialNumber,
+    partNumber,
+    customerName
+  });
+}
+
 ipcMain.handle('create-test-sheets', async (event, request) => {
   let testSheetTargetPaths = [];
   let copiedTestSheetPaths = [];
   let temporaryTestSheetPaths = [];
   try {
-    if (typeof request?.systemFolderPath !== 'string' || !path.isAbsolute(request.systemFolderPath)) {
-      return {
-        success: false,
-        error: 'Complete Update Network Save Location before creating test sheets.'
-      };
-    }
-    const systemDirectory = getSystemDirectory(request);
+    const systemDirectory = await getTestSheetSystemDirectory(request);
     const system = typeof request?.system === 'string'
       ? request.system.trim().toLowerCase()
       : '';
@@ -742,18 +799,8 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
     }
 
     const targetDirectory = path.join(systemDirectory, 'Internal data', 'Digital Test Sheets');
-    let targetStats;
-    try {
-      targetStats = await fs.promises.stat(targetDirectory);
-    } catch (err) {
-      if (err.code === 'ENOENT') {
-        return {
-          success: false,
-          error: 'The Digital Test Sheets folder does not exist. Complete Create System Folders first.'
-        };
-      }
-      throw err;
-    }
+    await fs.promises.mkdir(targetDirectory, { recursive: true });
+    const targetStats = await fs.promises.stat(targetDirectory);
     if (!targetStats.isDirectory()) {
       return { success: false, error: 'The Digital Test Sheets destination is not a folder.' };
     }
@@ -1302,6 +1349,20 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   app.isQuitting = true;
+  if (keepAwakeInterval) {
+    clearInterval(keepAwakeInterval);
+    keepAwakeInterval = null;
+  }
+  if (powerSaveBlockerId !== null) {
+    if (powerSaveBlocker.isStarted(powerSaveBlockerId)) {
+      powerSaveBlocker.stop(powerSaveBlockerId);
+    }
+    powerSaveBlockerId = null;
+  }
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
 });
 
 app.on('window-all-closed', () => {
