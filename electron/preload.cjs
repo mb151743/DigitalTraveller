@@ -11,15 +11,24 @@ contextBridge.exposeInMainWorld('desktopAPI', {
   writeNetworkFile: (filePath, data) => ipcRenderer.invoke('write-network-file', { filePath, data }),
   selectNetworkDirectory: () => ipcRenderer.invoke('select-network-directory'),
   selectNetworkFile: () => ipcRenderer.invoke('select-network-file'),
-  createSystemFolders: (serialNumber, partNumber, customerName, saveLocation, systemFolderPath) =>
+  createSystemFolders: (
+    serialNumber,
+    partNumber,
+    customerName,
+    saveLocation,
+    systemFolderPath,
+    customerDataFolderNames
+  ) =>
     ipcRenderer.invoke('create-system-folders', {
       serialNumber,
       partNumber,
       customerName,
       saveLocation,
-      systemFolderPath
+      systemFolderPath,
+      customerDataFolderNames
     }),
   createTestSheets: (
+    operation,
     system,
     serialNumber,
     partNumber,
@@ -34,6 +43,7 @@ contextBridge.exposeInMainWorld('desktopAPI', {
     testSheetMetadata,
     cellMappings
   ) => ipcRenderer.invoke('create-test-sheets', {
+    operation,
     system,
     serialNumber,
     partNumber,
@@ -112,5 +122,7 @@ contextBridge.exposeInMainWorld('desktopAPI', {
     killWireProcesses: () => ipcRenderer.invoke('kill-wire-processes'),
     launchWireUninstall: (registryPath) =>
     ipcRenderer.invoke('launch-wire-uninstall', registryPath),
-  fetchWireKey: (serialNumber) => ipcRenderer.invoke('fetch-wire-key', serialNumber)
+  fetchWireKey: (serialNumber) => ipcRenderer.invoke('fetch-wire-key', serialNumber),
+  checkNetworkStatus: (networkSaveLocation) =>
+    ipcRenderer.invoke('check-network-status', networkSaveLocation)
 });

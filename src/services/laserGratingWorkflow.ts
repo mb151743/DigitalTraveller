@@ -4,8 +4,9 @@ export const LEGACY_LASER_GRATING_SELECTION_STEP_NAME = 'Select Laser and Gratin
 export const LASER_GRATING_SELECTION_STEP_NAME = 'Select Laser & Grating Combinations';
 export const CREATE_TEST_SHEETS_STEP_NAME = 'Create Test Sheets';
 export const CREATE_TEST_SHEETS_STEP_INSTRUCTIONS = [
-  'Copy the configured master digital test sheet into Internal data\\Digital Test Sheets.',
-  'Create one test sheet for inLux, or one test sheet for each selected laser and grating combination for Virsa and inVia.'
+  'Part 1: Copy an editable blank master test sheet into the network system folder at Internal data\\Digital Test Sheets for each laser and grating combination.',
+  'Name each workbook <wavelength>nm_<grating> (for example, 532nm_1200).',
+  'Part 2: Populate the copied test sheets. If population fails, the blank editable copies remain available.'
 ];
 export const LASER_GRATING_FILES_STEP_NAME = 'Create Extra Data Files';
 export const PAT_TEST_STEP_NAME = 'PAT Test';
@@ -70,7 +71,7 @@ export const LASER_GRATING_FILES_SAVE_INSTRUCTION =
   'Files are saved in the configured system folder under Internal data/Extra Data.';
 export const SYSTEM_FOLDERS_STEP_INSTRUCTIONS = [
   'Create the system folder named <Serial Number>_<Part Number>_<Customer Name>.',
-  'Create Customer data\\Reg Backup and Customer data\\System Pictures.',
+  'Create Customer data\\Reg Backup, Customer data\\System Pictures, and each combination folder found on the network.',
   'Create Internal data\\Digital Test Sheets and Internal data\\Extra Data. Save test sheets and records in Internal data.'
 ];
 export const PAT_TEST_STEP_INSTRUCTIONS = [

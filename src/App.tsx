@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   LaserGratingCombination,
   LaserGratingFileResult,
@@ -13,7 +13,8 @@ import {
   MotorScanEntry,
   MotorScanSaveResult,
   NetworkSystemFolderSearchOperationResult,
-  NetworkSaveLocationOperationResult
+  NetworkSaveLocationOperationResult,
+  NetworkStatusResult
 } from './types/traveller';
 import { StorageService } from './services/storageService';
 import { WorkflowService } from './services/workflowService';
@@ -87,6 +88,9 @@ export const App: React.FC = () => {
   const [isWireKeyModalOpen, setIsWireKeyModalOpen] = useState(false);
   const [isCleanupOpen, setIsCleanupOpen] = useState(false);
   const [wireKeySerial, setWireKeySerial] = useState('');
+  const [networkStatus, setNetworkStatus] = useState<NetworkStatusResult | null>(null);
+  const [isCheckingNetworkStatus, setIsCheckingNetworkStatus] = useState(false);
+  const networkStatusRequestId = useRef(0);
   const [notification, setNotification] = useState<string | null>(() => {
     const configError = getConfigJsonInitializationError();
     return configError ? `Settings configuration error: ${configError}` : null;
@@ -108,6 +112,50 @@ export const App: React.FC = () => {
     return 320;
   });
   const [isResizingLeftPane, setIsResizingLeftPane] = useState(false);
+
+  const runNetworkStatusCheck = useCallback(async () => {
+    const requestId = ++networkStatusRequestId.current;
+    setIsCheckingNetworkStatus(true);
+    try {
+      const checkStatus = window.desktopAPI?.checkNetworkStatus;
+      if (!checkStatus) {
+        if (requestId === networkStatusRequestId.current) {
+          setNetworkStatus({
+            issNetwork: {
+              success: false,
+              message: 'Network status checks are available in the Windows desktop app only.'
+            },
+            networkSaveLocation: {
+              success: false,
+              message: 'Network status checks are available in the Windows desktop app only.'
+            },
+            checkedAt: new Date().toISOString()
+          });
+        }
+        return;
+      }
+
+      const result = await checkStatus(
+        NetworkShareConfigService.getNetworkSaveLocation(traveller.system)
+      );
+      if (requestId === networkStatusRequestId.current) setNetworkStatus(result);
+    } catch (error) {
+      if (requestId === networkStatusRequestId.current) {
+        const message = error instanceof Error ? error.message : 'Network status check failed.';
+        setNetworkStatus({
+          issNetwork: { success: false, message },
+          networkSaveLocation: { success: false, message },
+          checkedAt: new Date().toISOString()
+        });
+      }
+    } finally {
+      if (requestId === networkStatusRequestId.current) setIsCheckingNetworkStatus(false);
+    }
+  }, [traveller.system]);
+
+  useEffect(() => {
+    void runNetworkStatusCheck();
+  }, [runNetworkStatusCheck]);
 
   // Resize drag event listeners
   useEffect(() => {
@@ -913,12 +961,32 @@ export const App: React.FC = () => {
       };
     }
 
+    const updateLocationStep = traveller.steps.find(
+      (step) => step.name === UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME
+    );
+    const folderNamesStart = updateLocationStep?.notes?.indexOf('Customer data folders found:') ?? -1;
+    const customerDataFolderNames = folderNamesStart >= 0
+      ? (updateLocationStep?.notes || '')
+          .slice(folderNamesStart + 'Customer data folders found:'.length)
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line.startsWith('- '))
+          .map((line) => line.slice(2))
+          .filter((name) => name && name !== '(none)')
+      : [];
+    if (customerDataFolderNames.length > 0 && !traveller.networkSystemFolderPath) {
+      return {
+        success: false,
+        error: 'Complete Update Network Save Location before creating the discovered Customer data folders.'
+      };
+    }
     const result = await createFolders(
       traveller.serialNumber,
       traveller.partNumber || '',
       traveller.customerName || '',
       StorageService.getSaveLocation(),
-      traveller.networkSystemFolderPath
+      traveller.networkSystemFolderPath,
+      customerDataFolderNames
     );
     if (result.success) {
       setNotification(`Created system folder structure in ${result.directory}`);
@@ -998,6 +1066,7 @@ export const App: React.FC = () => {
   };
 
   const handleCreateTestSheets = async (
+    operation: 'prepare' | 'populate',
     overwrite: boolean,
     testSheetMetadata?: DigitalTestSheetMetadata
   ): Promise<TestSheetResult> => {
@@ -1033,6 +1102,7 @@ export const App: React.FC = () => {
     }
 
     const result = await createTestSheets(
+      operation,
       traveller.system,
       traveller.serialNumber,
       traveller.partNumber || '',
@@ -1048,10 +1118,9 @@ export const App: React.FC = () => {
       DigitalTestSheetSettingsService.getCellMappings(traveller.system)
     );
     if (result.success) {
-      const recordsFile = result.files[result.files.length - 2];
-      setNotification(
-        `Created test sheets and copied both master records to ${recordsFile?.replace(/[\\/][^\\/]*$/, '')}`
-      );
+      setNotification(operation === 'prepare'
+        ? `Created ${result.testSheetFiles?.length || 0} editable blank test sheet(s).`
+        : `Populated ${result.files.length} test sheet(s).`);
     }
     return result;
   };
@@ -1068,6 +1137,9 @@ export const App: React.FC = () => {
       onExportJson={handleExportJson}
       onImportJsonClick={handleImportJsonClick}
       onNewTraveller={handleNewTravellerClick}
+      networkStatus={networkStatus}
+      isCheckingNetworkStatus={isCheckingNetworkStatus}
+      onRefreshNetworkStatus={runNetworkStatusCheck}
     >
       {/* Toast Notification */}
       {notification && (

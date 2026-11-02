@@ -610,11 +610,31 @@ ipcMain.handle('save-motor-scan-results', async (event, request) => {
 ipcMain.handle('create-system-folders', async (event, request) => {
   try {
     const systemDirectory = getSystemDirectory(request);
+    const customerDataFolderNames = request?.customerDataFolderNames ?? [];
+    if (
+      !Array.isArray(customerDataFolderNames) ||
+      customerDataFolderNames.some((name) =>
+        typeof name !== 'string' ||
+        !name.trim() ||
+        name !== name.trim() ||
+        /[<>:"/\\|?*\u0000-\u001f]/.test(name) ||
+        name === '.' ||
+        name === '..' ||
+        /[. ]$/.test(name)
+      )
+    ) {
+      return { success: false, error: 'The Customer data folder names are invalid.' };
+    }
+
+    const customerDataDirectory = path.join(systemDirectory, 'Customer data');
     const folders = [
-      path.join(systemDirectory, 'Customer data', 'Reg Backup'),
-      path.join(systemDirectory, 'Customer data', 'System Pictures'),
+      path.join(customerDataDirectory, 'Reg Backup'),
+      path.join(customerDataDirectory, 'System Pictures'),
       path.join(systemDirectory, 'Internal data', 'Digital Test Sheets'),
-      path.join(systemDirectory, 'Internal data', 'Extra Data')
+      path.join(systemDirectory, 'Internal data', 'Extra Data'),
+      ...[...new Set(customerDataFolderNames)].map((name) =>
+        path.join(customerDataDirectory, name)
+      )
     ];
     await Promise.all(folders.map((folder) => fs.promises.mkdir(folder, { recursive: true })));
     return { success: true, directory: systemDirectory };
@@ -625,11 +645,24 @@ ipcMain.handle('create-system-folders', async (event, request) => {
 });
 
 ipcMain.handle('create-test-sheets', async (event, request) => {
+  let testSheetTargetPaths = [];
+  let copiedTestSheetPaths = [];
+  let temporaryTestSheetPaths = [];
   try {
+    if (typeof request?.systemFolderPath !== 'string' || !path.isAbsolute(request.systemFolderPath)) {
+      return {
+        success: false,
+        error: 'Complete Update Network Save Location before creating test sheets.'
+      };
+    }
     const systemDirectory = getSystemDirectory(request);
     const system = typeof request?.system === 'string'
       ? request.system.trim().toLowerCase()
       : '';
+    const operation = request?.operation;
+    if (operation !== 'prepare' && operation !== 'populate') {
+      return { success: false, error: 'Choose whether to copy or populate the test sheets.' };
+    }
     const supportedSystems = new Set(['invia', 'virsa', 'inlux']);
     if (!supportedSystems.has(system)) {
       return { success: false, error: 'Test sheet copying is only configured for inVia, Virsa, and inLux.' };
@@ -641,9 +674,11 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
     if (!masterTemplatePath || !path.isAbsolute(masterTemplatePath)) {
       return { success: false, error: 'Configure an absolute master test sheet path in Settings.' };
     }
-    const sourceStats = await fs.promises.stat(masterTemplatePath);
-    if (!sourceStats.isFile()) {
-      return { success: false, error: 'The configured master test sheet is not a file.' };
+    if (operation === 'prepare') {
+      const sourceStats = await fs.promises.stat(masterTemplatePath);
+      if (!sourceStats.isFile()) {
+        return { success: false, error: 'The configured master test sheet is not a file.' };
+      }
     }
 
     const testAcceptanceRecordPath = typeof request?.testAcceptanceRecordPath === 'string'
@@ -723,7 +758,6 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
       return { success: false, error: 'The Digital Test Sheets destination is not a folder.' };
     }
 
-    const serialNumber = request.serialNumber.trim();
     const testSheetMetadata = request.testSheetMetadata || {};
     const requiredTestSheetValues = system === 'inlux'
       ? [
@@ -743,7 +777,7 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
           ['power meter head serial number', testSheetMetadata.powerMeterHeadSerialNumber]
         ]
       : [];
-    if (requiredTestSheetValues.length > 0) {
+    if (operation === 'populate' && requiredTestSheetValues.length > 0) {
       const missingValue = requiredTestSheetValues.find(
         ([, value]) => typeof value !== 'string' || !value.trim()
       );
@@ -754,43 +788,44 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
         };
       }
     }
-
-    const targetNames = [];
-    if (system === 'inlux') {
-      targetNames.push(`${serialNumber}_${path.basename(masterTemplatePath)}`);
-    } else {
-      if (!Array.isArray(request?.combinations) || request.combinations.length === 0) {
-        return { success: false, error: 'Add at least one laser and grating combination first.' };
-      }
-      const masterFileName = path.basename(masterTemplatePath);
-      for (const combination of request.combinations) {
-        const wavelength = Number(combination?.wavelengthNm);
-        const gratingDensity = Number(combination?.gratingDensityLinesPerMm);
-        if (
-          !Number.isFinite(wavelength) ||
-          wavelength <= 0 ||
-          !Number.isInteger(gratingDensity) ||
-          gratingDensity <= 0
-        ) {
-          return {
-            success: false,
-            error: 'Each row must have a positive wavelength and a positive whole-number grating density.'
-          };
-        }
-        targetNames.push(
-          `${serialNumber}_${wavelength}nm_${gratingDensity}_${masterFileName}`
-        );
-      }
+    if (
+      operation === 'populate' &&
+      (typeof request?.serialNumber !== 'string' || !request.serialNumber.trim())
+    ) {
+      return { success: false, error: 'Enter the traveller serial number before populating test sheets.' };
     }
 
-    const testSheetTargetPaths = [...new Set(targetNames)].map(
+    if (!Array.isArray(request?.combinations) || request.combinations.length === 0) {
+      return { success: false, error: 'Add at least one laser and grating combination first.' };
+    }
+    const targetNames = [];
+    for (const combination of request.combinations) {
+      const wavelength = Number(combination?.wavelengthNm);
+      const gratingDensity = Number(combination?.gratingDensityLinesPerMm);
+      if (
+        !Number.isFinite(wavelength) ||
+        wavelength <= 0 ||
+        !Number.isInteger(gratingDensity) ||
+        gratingDensity <= 0
+      ) {
+        return {
+          success: false,
+          error: 'Each row must have a positive wavelength and a positive whole-number grating density.'
+        };
+      }
+      targetNames.push(`${wavelength}nm_${gratingDensity}${path.extname(masterTemplatePath)}`);
+    }
+
+    testSheetTargetPaths = [...new Set(targetNames)].map(
       (name) => path.join(targetDirectory, name)
     );
     const recordTargetPaths = [
       path.join(systemDirectory, path.basename(masterRecordPaths[0])),
       path.join(systemDirectory, path.basename(masterRecordPaths[1]))
     ];
-    const targetPaths = [...testSheetTargetPaths, ...recordTargetPaths];
+    const targetPaths = operation === 'prepare'
+      ? [...testSheetTargetPaths, ...recordTargetPaths]
+      : testSheetTargetPaths;
     const masterPaths = [masterTemplatePath, ...masterRecordPaths]
       .map((masterPath) => path.resolve(masterPath).toLowerCase());
     if (targetPaths.some((targetPath) =>
@@ -828,7 +863,7 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
     }
 
     const conflicts = [];
-    for (const targetPath of targetPaths) {
+    for (const targetPath of operation === 'prepare' ? targetPaths : []) {
       try {
         await fs.promises.access(targetPath, fs.constants.F_OK);
         conflicts.push(targetPath);
@@ -844,20 +879,49 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
       await fs.promises.chmod(targetPath, 0o666);
     }
 
-    const files = [];
-    for (const targetPath of targetPaths) {
-      const sheetIndex = testSheetTargetPaths.indexOf(targetPath);
-      const recordIndex = recordTargetPaths.indexOf(targetPath);
-      const sourcePath = sheetIndex >= 0
-        ? masterTemplatePath
-        : masterRecordPaths[recordIndex];
-      await fs.promises.copyFile(
-        sourcePath,
-        targetPath,
-        request.overwrite === true ? 0 : fs.constants.COPYFILE_EXCL
+    if (operation === 'prepare') {
+      const files = [];
+      for (const targetPath of targetPaths) {
+        const sheetIndex = testSheetTargetPaths.indexOf(targetPath);
+        const recordIndex = recordTargetPaths.indexOf(targetPath);
+        const sourcePath = sheetIndex >= 0
+          ? masterTemplatePath
+          : masterRecordPaths[recordIndex];
+        await fs.promises.copyFile(
+          sourcePath,
+          targetPath,
+          request.overwrite === true ? 0 : fs.constants.COPYFILE_EXCL
+        );
+        await fs.promises.chmod(targetPath, 0o666);
+        files.push(targetPath);
+        if (sheetIndex >= 0) copiedTestSheetPaths.push(targetPath);
+      }
+      return { success: true, files, testSheetFiles: testSheetTargetPaths };
+    }
+
+    const stagedPaths = [];
+    for (const [index, targetPath] of testSheetTargetPaths.entries()) {
+      try {
+        await fs.promises.access(targetPath, fs.constants.F_OK);
+      } catch (err) {
+        if (err.code === 'ENOENT') {
+          return {
+            success: false,
+            error: `Copy the blank test sheets before populating them. Missing file: ${targetPath}`,
+            files: testSheetTargetPaths
+          };
+        }
+        throw err;
+      }
+      const extension = path.extname(targetPath);
+      const stagedPath = path.join(
+        path.dirname(targetPath),
+        `.${path.basename(targetPath, extension)}.populate-${process.pid}-${Date.now()}-${index}${extension}`
       );
-      await fs.promises.chmod(targetPath, 0o666);
-      if (sheetIndex >= 0 && (system === 'invia' || system === 'virsa' || system === 'inlux')) {
+      await fs.promises.copyFile(targetPath, stagedPath, fs.constants.COPYFILE_EXCL);
+      temporaryTestSheetPaths.push(stagedPath);
+      await fs.promises.chmod(stagedPath, 0o666);
+      if (system === 'invia' || system === 'virsa' || system === 'inlux') {
         await execFileAsync('powershell.exe', [
           '-NoProfile',
           '-NonInteractive',
@@ -866,7 +930,7 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
           '-File',
           path.join(__dirname, 'populateDigitalTestSheet.ps1'),
           system === 'inlux' ? 'inLux' : system === 'invia' ? 'InVia' : 'Virsa',
-          targetPath,
+          stagedPath,
           (testSheetMetadata.jobNumber || request.jobNumber || '').trim(),
           (testSheetMetadata.customerName || request.customerName || '').trim(),
           (testSheetMetadata.partNumber || '').trim(),
@@ -876,12 +940,31 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
           JSON.stringify(cellMappings)
         ]);
       }
-      files.push(targetPath);
+      stagedPaths.push(stagedPath);
     }
-    return { success: true, files };
+
+    for (const [index, stagedPath] of stagedPaths.entries()) {
+      await fs.promises.rename(stagedPath, testSheetTargetPaths[index]);
+    }
+    temporaryTestSheetPaths = [];
+    return { success: true, files: testSheetTargetPaths };
   } catch (err) {
     console.error('Failed to create test sheets:', err);
-    return { success: false, error: `Could not create test sheets: ${err.message}` };
+    const cleanupErrors = [];
+    for (const temporaryPath of temporaryTestSheetPaths) {
+      try {
+        await fs.promises.unlink(temporaryPath);
+      } catch (cleanupError) {
+        if (cleanupError.code !== 'ENOENT') cleanupErrors.push(cleanupError.message);
+      }
+    }
+    return {
+      success: false,
+      error: `Could not ${request?.operation === 'populate' ? 'populate' : 'create'} test sheets: ${err.message}${cleanupErrors.length ? ` Temporary files could not be removed: ${cleanupErrors.join('; ')}` : ''}`,
+      ...(testSheetTargetPaths.length > 0
+        ? { files: request?.operation === 'prepare' ? copiedTestSheetPaths : testSheetTargetPaths }
+        : {})
+    };
   }
 });
 
@@ -1023,6 +1106,117 @@ ipcMain.handle('launch-wire-uninstall', (event, registryPath) =>
 // <p id="phrase">KEY</p> from the HTML response. Runs in the main process, so browser
 // cross-origin (CORS) rules do not apply.
 const WIRE_KEY_URL = 'https://spd-apps/FeaturePermissions/generate';
+const WIRE_DASHBOARD_URL = 'https://spd-apps/FeaturePermissions/dashboard';
+
+ipcMain.handle('check-network-status', async (event, configuredLocation) => {
+  const checkIssNetwork = async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await net.fetch(WIRE_DASHBOARD_URL, {
+        method: 'GET',
+        credentials: 'include',
+        signal: controller.signal
+      });
+      return response.ok
+        ? { success: true, message: 'WiRE dashboard is reachable.' }
+        : {
+            success: false,
+            message: `WiRE dashboard returned HTTP ${response.status}.`
+          };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Could not reach the WiRE dashboard: ${error.message || 'network unavailable'}.`
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const checkSaveLocation = async () => {
+    const location = typeof configuredLocation === 'string'
+      ? configuredLocation.trim()
+      : '';
+    if (!location || !path.isAbsolute(location)) {
+      return {
+        success: false,
+        message: 'No absolute network save location is configured.'
+      };
+    }
+
+    let candidate = path.resolve(location);
+    while (true) {
+      let timer;
+      try {
+        const directoryStatus = await Promise.race([
+          (async () => {
+            const stats = await fs.promises.stat(candidate);
+            if (!stats.isDirectory()) {
+              return {
+                isDirectory: false,
+                message: `The save location is not a folder: ${candidate}`
+              };
+            }
+            await fs.promises.readdir(candidate);
+            return { isDirectory: true };
+          })(),
+          new Promise((resolve, reject) => {
+            timer = setTimeout(() => {
+              const timeoutError = new Error('Network folder check timed out.');
+              timeoutError.code = 'ETIMEDOUT';
+              reject(timeoutError);
+            }, 8000);
+          })
+        ]);
+        clearTimeout(timer);
+        if (!directoryStatus.isDirectory) {
+          return { success: false, message: directoryStatus.message };
+        }
+        return {
+          success: true,
+          message: candidate.toLowerCase() === path.resolve(location).toLowerCase()
+            ? 'The configured network save folder is readable.'
+            : `The network is reachable; the configured folder is not created yet. Readable parent: ${candidate}`
+        };
+      } catch (error) {
+        if (error.code === 'ENOENT') {
+          const parent = path.dirname(candidate);
+          if (parent === candidate) {
+            return {
+              success: false,
+              message: `Could not find the network save location or a readable parent folder: ${location}`
+            };
+          }
+          candidate = parent;
+          continue;
+        }
+        if (error.code === 'ETIMEDOUT') {
+          return {
+            success: false,
+            message: `Timed out checking the network save location: ${location}`
+          };
+        }
+        return {
+          success: false,
+          message: `Cannot read the network save location: ${error.message || 'access denied'}.`
+        };
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  };
+
+  const [issNetwork, networkSaveLocation] = await Promise.all([
+    checkIssNetwork(),
+    checkSaveLocation()
+  ]);
+  return {
+    issNetwork,
+    networkSaveLocation,
+    checkedAt: new Date().toISOString()
+  };
+});
 
 ipcMain.handle('fetch-wire-key', async (event, serialNumber) => {
   const cleanSn = (serialNumber || '').trim();

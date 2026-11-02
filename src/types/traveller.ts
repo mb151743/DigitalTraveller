@@ -21,10 +21,21 @@ export type SystemFolderResult =
   | { success: true; directory: string }
   | { success: false; error: string };
 
+export interface ConnectionCheckResult {
+  success: boolean;
+  message: string;
+}
+
+export interface NetworkStatusResult {
+  issNetwork: ConnectionCheckResult;
+  networkSaveLocation: ConnectionCheckResult;
+  checkedAt: string;
+}
+
 export type TestSheetResult =
-  | { success: true; files: string[] }
+  | { success: true; files: string[]; testSheetFiles?: string[] }
   | { success: false; conflicts: string[] }
-  | { success: false; error: string };
+  | { success: false; error: string; files?: string[] };
 
 export interface DigitalTestSheetMetadata {
   jobNumber: string;

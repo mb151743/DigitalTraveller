@@ -115,6 +115,7 @@ interface StepDialogProps {
   onSaveMotorScanResults: (entries: MotorScanEntry[]) => Promise<MotorScanSaveResult>;
   system: string;
   onCreateTestSheets: (
+    operation: 'prepare' | 'populate',
     overwrite: boolean,
     testSheetMetadata?: DigitalTestSheetMetadata
   ) => Promise<TestSheetResult>;
@@ -188,6 +189,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   const isSaveWirePasswordsStep = step.name === SAVE_WIRE_PASSWORDS_STEP_NAME;
   const isSystemFoldersStep = step.name === SYSTEM_FOLDERS_STEP_NAME;
   const isCreateTestSheetsStep = step.name === CREATE_TEST_SHEETS_STEP_NAME;
+  const hasPreparedTestSheets = notes.includes('Blank test sheets copied:');
   const isPreSystemTestStep = step.name === PRE_SYSTEM_TEST_STEP_NAME;
   const isUpdateNetworkSaveLocationStep =
     step.name === UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME;
@@ -453,34 +455,89 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
     isTestSheetDataPromptOpen
   ]);
 
+  const prepareTestSheets = async (): Promise<void> => {
+    setIsCreatingTestSheets(true);
+    setCompletionError(null);
+    try {
+      let result = await onCreateTestSheets('prepare', false);
+      if (!result.success && 'conflicts' in result) {
+        const conflicts = result.conflicts.map((file) => `• ${file}`).join('\n');
+        const shouldOverwrite = window.confirm(
+          `These files already exist:\n\n${conflicts}\n\nReplace them with blank copies of the master workbooks?`
+        );
+        if (!shouldOverwrite) {
+          setCompletionError('Test sheet copying cancelled. Existing files were not changed.');
+          return;
+        }
+        result = await onCreateTestSheets('prepare', true);
+      }
+      if (!result.success) {
+        const partialCopies = 'files' in result && result.files?.length
+          ? ` Some files were copied to ${result.files[0].replace(/[\\/][^\\/]*$/, '')}.`
+          : '';
+        setCompletionError(
+          'error' in result
+            ? `${result.error}${partialCopies}`
+            : `These files still exist and were not replaced:\n${result.conflicts.join('\n')}`
+        );
+        return;
+      }
+
+      const sheetFiles = result.testSheetFiles || result.files;
+      const report = [
+        'Blank test sheets copied:',
+        ...sheetFiles.map((file) => `- ${file.split(/[\\/]/).pop()}`),
+        '',
+        'Blank copies are editable. Run Part 2 to populate their cells.'
+      ].join('\n');
+      setNotes(report);
+      onUpdateStatus(step.id, 'In Progress', report, signoffTechnician);
+      setCompletionError(null);
+    } catch (error) {
+      setCompletionError(
+        error instanceof Error ? error.message : 'Could not copy the master test sheets.'
+      );
+    } finally {
+      setIsCreatingTestSheets(false);
+    }
+  };
+
   const createTestSheetsAndComplete = async (
     metadata?: DigitalTestSheetMetadata
   ): Promise<boolean> => {
     setIsCreatingTestSheets(true);
     try {
-      let result = await onCreateTestSheets(false, metadata);
+      let result = await onCreateTestSheets('populate', false, metadata);
       if (!result.success && 'conflicts' in result) {
         const conflicts = result.conflicts.map((file) => `• ${file}`).join('\n');
         const shouldOverwrite = window.confirm(
           `These test sheets already exist:\n\n${conflicts}\n\nReplace the existing files?`
         );
         if (!shouldOverwrite) {
-          setCompletionError('Test sheet creation cancelled. Existing files were not changed.');
+          setCompletionError('Test sheet population cancelled. Existing files were not changed.');
           return false;
         }
-        result = await onCreateTestSheets(true, metadata);
+        result = await onCreateTestSheets('populate', true, metadata);
       }
       if (!result.success) {
+        const remainingFiles = 'files' in result && result.files?.length
+          ? `\n\nThe copied workbooks remain available for editing in:\n${result.files[0].replace(/[\\/][^\\/]*$/, '')}`
+          : '';
         setCompletionError(
           'error' in result
-            ? result.error
+            ? `${result.error}${remainingFiles}`
             : `These files still exist and were not replaced:\n${result.conflicts.join('\n')}`
         );
         return false;
       }
       setCompletionError(null);
       setIsTestSheetDataPromptOpen(false);
-      onUpdateStatus(step.id, 'Complete', notes, signoffTechnician);
+      const report = [
+        'Test sheets populated:',
+        ...result.files.map((file) => `- ${file.split(/[\\/]/).pop()}`)
+      ].join('\n');
+      setNotes(report);
+      onUpdateStatus(step.id, 'Complete', report, signoffTechnician);
       onClose();
       return true;
     } catch (error) {
@@ -491,6 +548,36 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
     } finally {
       setIsCreatingTestSheets(false);
     }
+  };
+
+  const handleStartTestSheetPopulation = async () => {
+    if (!hasPreparedTestSheets) {
+      setCompletionError('Complete Part 1 and copy the blank test sheets before populating them.');
+      return;
+    }
+    if (!serialNumber.trim()) {
+      setCompletionError('Enter the traveller serial number before populating test sheets.');
+      return;
+    }
+    const validationError = validateLaserGratingCombinations(laserGratingCombinations);
+    if (validationError) {
+      setCompletionError(validationError);
+      return;
+    }
+    if (system === 'Virsa' || system === 'inLux') {
+      const metadata = normalizeTestSheetMetadata(testSheetMetadata);
+      const requiredFields = system === 'inLux'
+        ? INLUX_REQUIRED_TEST_SHEET_FIELDS
+        : VIRSA_REQUIRED_TEST_SHEET_FIELDS;
+      if (requiredFields.some((field) => !metadata[field])) {
+        setCompletionError(null);
+        setIsTestSheetDataPromptOpen(true);
+        return;
+      }
+      await createTestSheetsAndComplete(metadata);
+      return;
+    }
+    await createTestSheetsAndComplete();
   };
 
   const handleSubmitTestSheetMetadata = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -559,34 +646,6 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
         setCompletionError(validationError);
         return;
       }
-    }
-    if (isCreateTestSheetsStep) {
-      if (system === 'Virsa' || system === 'inLux') {
-        const metadata = normalizeTestSheetMetadata(testSheetMetadata);
-        const requiredFields = system === 'inLux'
-          ? INLUX_REQUIRED_TEST_SHEET_FIELDS
-          : VIRSA_REQUIRED_TEST_SHEET_FIELDS;
-        if (requiredFields.some((field) => !metadata[field])) {
-          setCompletionError(null);
-          setIsTestSheetDataPromptOpen(true);
-          return;
-        }
-        await createTestSheetsAndComplete(metadata);
-        return;
-      }
-      if (!serialNumber.trim()) {
-        setCompletionError('Enter the traveller serial number before creating test sheets.');
-        return;
-      }
-      if (system !== 'inLux') {
-        const validationError = validateLaserGratingCombinations(laserGratingCombinations);
-        if (validationError) {
-          setCompletionError(validationError);
-          return;
-        }
-      }
-      await createTestSheetsAndComplete();
-      return;
     }
     if (isSystemFoldersStep) {
       setIsCreatingSystemFolders(true);
@@ -740,7 +799,8 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
           {isSystemFoldersStep && (
             <div className="rounded-lg border border-blue-800/70 bg-blue-950/30 p-3 text-xs text-slate-300">
               Completing this step creates the system folder and its standard Customer data and
-              Internal data subfolders in the configured Save location. Probe 1 is not created at this stage.
+              Internal data subfolders in the configured Save location, including the discovered
+              laser/grating folders under Customer data. Probe 1 is not created at this stage.
             </div>
           )}
 
@@ -920,11 +980,36 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
           )}
 
           {isCreateTestSheetsStep && (
-            <div className="rounded-lg border border-blue-800/70 bg-blue-950/30 p-3 text-xs text-slate-300">
-              Completing this step copies the read-only master sheet configured in Settings into
-              the system folder under Internal data\Digital Test Sheets. inLux creates one sheet;
-              Virsa and inVia create one for each selected laser and grating combination.
-            </div>
+            <section className="space-y-3 rounded-lg border border-blue-800/70 bg-blue-950/30 p-4">
+              <p className="text-xs text-slate-300">
+                Create one editable workbook per laser/grating combination in the network system
+                folder&apos;s <span className="font-mono">Internal data\Digital Test Sheets</span>.
+                The filenames use the format <span className="font-mono">532nm_1200</span>.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={prepareTestSheets}
+                  disabled={isCreatingTestSheets}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
+                >
+                  {isCreatingTestSheets ? 'Copying blank sheets…' : 'Part 1: Copy Blank Test Sheets'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStartTestSheetPopulation}
+                  disabled={isCreatingTestSheets || !hasPreparedTestSheets}
+                  className="rounded-lg border border-emerald-500/60 bg-emerald-700/70 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isCreatingTestSheets ? 'Populating test sheets…' : 'Part 2: Populate Test Sheets'}
+                </button>
+              </div>
+              {hasPreparedTestSheets && (
+                <p className="text-[11px] text-emerald-300">
+                  Part 1 is complete. These blank copies remain available even if Part 2 fails.
+                </p>
+              )}
+            </section>
           )}
 
           {isRecordSystemDetailsStep && (
@@ -1177,7 +1262,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
               Close Without Completing
             </button>
 
-            {!isLaserFilesStep && !isUpdateNetworkSaveLocationStep && (
+            {!isLaserFilesStep && !isUpdateNetworkSaveLocationStep && !isCreateTestSheetsStep && (
               <button
                 type="button"
                 onClick={handleMarkComplete}
@@ -1205,8 +1290,6 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
                       ? 'Update Network Save Location'
                       : isPreSystemTestStep
                       ? 'Save Motor Results to Network'
-                      : isCreateTestSheetsStep
-                      ? 'Create Test Sheets & Mark Complete'
                       : 'Mark Complete'}
                   </span>
               </button>

@@ -1,6 +1,19 @@
 import React from 'react';
-import { Minus, Square, X, Cpu, Sun, Moon, Settings, ArrowDownToLine } from 'lucide-react';
-import { SystemType } from '../types/traveller';
+import {
+  Minus,
+  Square,
+  X,
+  Cpu,
+  Sun,
+  Moon,
+  Settings,
+  ArrowDownToLine,
+  CircleCheck,
+  CircleX,
+  LoaderCircle,
+  RefreshCw
+} from 'lucide-react';
+import { NetworkStatusResult, SystemType } from '../types/traveller';
 
 interface WindowFrameProps {
   system: SystemType;
@@ -16,6 +29,9 @@ interface WindowFrameProps {
   onExportJson?: () => void;
   onImportJsonClick?: () => void;
   onNewTraveller?: () => void;
+  networkStatus?: NetworkStatusResult | null;
+  isCheckingNetworkStatus?: boolean;
+  onRefreshNetworkStatus?: () => void;
 }
 
 // Bridge exposed by electron/preload.cjs (undefined when running in a normal browser)
@@ -41,7 +57,10 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({
   onOpenConfig,
   onExportJson,
   onImportJsonClick,
-  onNewTraveller
+  onNewTraveller,
+  networkStatus = null,
+  isCheckingNetworkStatus = false,
+  onRefreshNetworkStatus
 }) => {
   const isDark = theme === 'dark';
 
@@ -237,6 +256,76 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({
           {version}
         </div>
       </main>
+      <footer
+        className={`flex h-8 flex-shrink-0 items-center justify-between border-t px-3 text-[10px] ${
+          isDark
+            ? 'border-slate-800 bg-slate-900/90 text-slate-300'
+            : 'border-slate-300 bg-slate-200/90 text-slate-700'
+        }`}
+        aria-label="Connection status"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          {([
+            {
+              label: 'ISS network',
+              status: networkStatus?.issNetwork
+            },
+            {
+              label: 'Network save',
+              status: networkStatus?.networkSaveLocation
+            }
+          ]).map(({ label, status }) => {
+            const color = isCheckingNetworkStatus || !status
+              ? 'text-amber-400'
+              : status.success
+                ? 'text-emerald-400'
+                : 'text-rose-400';
+            const title = isCheckingNetworkStatus
+              ? `Checking ${label.toLowerCase()} access…`
+              : status?.message || 'Connection check has not run yet.';
+            return (
+              <span
+                key={label}
+                title={title}
+                className={`inline-flex min-w-0 items-center gap-1.5 ${color}`}
+              >
+                {isCheckingNetworkStatus ? (
+                  <LoaderCircle className="h-3.5 w-3.5 flex-shrink-0 animate-spin" />
+                ) : status?.success ? (
+                  <CircleCheck className="h-3.5 w-3.5 flex-shrink-0" />
+                ) : (
+                  <CircleX className="h-3.5 w-3.5 flex-shrink-0" />
+                )}
+                <span className="whitespace-nowrap">{label}:</span>
+                <span className="truncate">
+                  {isCheckingNetworkStatus
+                    ? 'Checking'
+                    : status
+                      ? status.success ? 'PASS' : 'FAIL'
+                      : 'Not checked'}
+                </span>
+              </span>
+            );
+          })}
+          {networkStatus?.checkedAt && (
+            <span className="hidden truncate text-slate-500 sm:inline" title={networkStatus.checkedAt}>
+              Checked {new Date(networkStatus.checkedAt).toLocaleTimeString()}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onRefreshNetworkStatus}
+          disabled={isCheckingNetworkStatus}
+          title="Check internal network and network save location access again"
+          className={`ml-2 inline-flex flex-shrink-0 items-center gap-1 rounded px-2 py-1 disabled:opacity-50 ${
+            isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-300'
+          }`}
+        >
+          <RefreshCw className={`h-3 w-3 ${isCheckingNetworkStatus ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
+      </footer>
     </div>
   );
 };

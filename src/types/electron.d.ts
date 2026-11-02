@@ -8,7 +8,8 @@ import {
   NetworkSystemFolderSearchOperationResult,
   NetworkSaveLocationOperationResult,
   MotorScanEntry,
-  MotorScanSaveResult
+  MotorScanSaveResult,
+  NetworkStatusResult
 } from './traveller';
 
 export interface CleanupFolder {
@@ -57,9 +58,11 @@ declare global {
         partNumber: string,
         customerName: string,
         saveLocation: string,
-        systemFolderPath?: string
+        systemFolderPath?: string,
+        customerDataFolderNames?: string[]
       ) => Promise<SystemFolderResult>;
       createTestSheets: (
+        operation: 'prepare' | 'populate',
         system: string,
         serialNumber: string,
         partNumber: string,
@@ -93,6 +96,7 @@ declare global {
         customerName: string,
         entries: MotorScanEntry[]
       ) => Promise<MotorScanSaveResult>;
+      checkNetworkStatus: (networkSaveLocation: string) => Promise<NetworkStatusResult>;
       loadSettingsConfig: () =>
         | { success: true; settings: Record<string, string> }
         | { success: false; error: string };
