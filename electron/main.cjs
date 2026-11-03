@@ -777,16 +777,16 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
     const systemRecordPrefix = system === 'inlux' ? 'inLux' : system === 'invia' ? 'InVia' : 'VIRSA';
     const configuredRecordPaths = [
       {
-        path: testAcceptanceRecordPath,
-        fallbackNames: [`${systemRecordPrefix} Test Acceptance Record.xlsm`]
-      },
-      {
         path: minorDeviationLogPath,
         fallbackNames: [
           'Minor Deviation Record.xlsm',
           `${systemRecordPrefix} Minor Deviation Record.xlsm`,
           `${systemRecordPrefix} Minor Deviation Log.xlsm`
         ]
+      },
+      {
+        path: testAcceptanceRecordPath,
+        fallbackNames: [`${systemRecordPrefix} Test Acceptance Record.xlsm`]
       }
     ];
     const masterRecordPaths = [];
@@ -875,6 +875,7 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
       return { success: false, error: 'Add at least one laser and grating combination first.' };
     }
     const targetNames = [];
+    const combinationsByTargetName = new Map();
     for (const combination of request.combinations) {
       const wavelength = Number(combination?.wavelengthNm);
       const gratingDensity = Number(combination?.gratingDensityLinesPerMm);
@@ -889,7 +890,16 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
           error: 'Each row must have a positive wavelength and a positive whole-number grating density.'
         };
       }
-      targetNames.push(`${wavelength}nm_${gratingDensity}${path.extname(masterTemplatePath)}`);
+      const targetName = `${wavelength}nm_${gratingDensity}${path.extname(masterTemplatePath)}`;
+      const existingCombination = combinationsByTargetName.get(targetName);
+      if (existingCombination && existingCombination.pl !== combination?.pl) {
+        return {
+          success: false,
+          error: `The laser/grating combination for ${targetName} has conflicting PL selections. Keep one row per wavelength and grating.`
+        };
+      }
+      combinationsByTargetName.set(targetName, combination);
+      targetNames.push(targetName);
     }
 
     const testSheetNames = [...new Set(targetNames)];
@@ -902,7 +912,7 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
     const recordNames = operation === 'prepare'
       ? masterRecordPaths.map((filePath) => path.basename(filePath))
       : configuredRecordPaths.map((record) => path.basename(record.path));
-    if (operation === 'publish') {
+    if (operation !== 'prepare') {
       for (const [index, record] of configuredRecordPaths.entries()) {
         const candidates = [
           path.join(localInternalDataDirectory, recordNames[index]),
@@ -963,8 +973,13 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
       'partNumber',
       'serialNumber',
       'powerMeterSerialNumber',
-      'powerMeterHeadSerialNumber'
+      'powerMeterHeadSerialNumber',
+      'technicianName',
+      'currentDate',
+      'hasPL'
     ];
+    const allowedRecordFields = allowedFields.filter((field) => field !== 'hasPL');
+    const recordCellMappings = request?.recordCellMappings;
     if (
       !cellMappings ||
       typeof cellMappings !== 'object' ||
@@ -973,7 +988,21 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
         !allowedFields.includes(field) ||
         typeof cell !== 'string' ||
         (cell !== '' && !/^[A-Z]{1,3}[1-9]\d*$/i.test(cell))
-      )
+      ) ||
+      !recordCellMappings ||
+      typeof recordCellMappings !== 'object' ||
+      Array.isArray(recordCellMappings) ||
+      ['minorDeviation', 'testAcceptance'].some((recordType) => {
+        const mappings = recordCellMappings[recordType];
+        return !mappings ||
+          typeof mappings !== 'object' ||
+          Array.isArray(mappings) ||
+          Object.entries(mappings).some(([field, cell]) =>
+            !allowedRecordFields.includes(field) ||
+            typeof cell !== 'string' ||
+            (cell !== '' && !/^[A-Z]{1,3}[1-9]\d*$/i.test(cell))
+          );
+      })
     ) {
       return {
         success: false,
@@ -1035,12 +1064,16 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
         files,
         testSheetFiles: testSheetTargetPaths,
         outputDirectory: targetDirectory,
-        localDirectory: localTestSheetsDirectory
+        localDirectory: localTestSheetsDirectory,
+        recordDirectory: operation === 'publish'
+          ? path.join(systemDirectory, 'Internal data')
+          : localInternalDataDirectory
       };
     }
 
+    const populationTargetPaths = [...testSheetTargetPaths, ...localRecordTargetPaths];
     const stagedPaths = [];
-    for (const [index, targetPath] of testSheetTargetPaths.entries()) {
+    for (const [index, targetPath] of populationTargetPaths.entries()) {
       try {
         await fs.promises.access(targetPath, fs.constants.F_OK);
       } catch (err) {
@@ -1048,7 +1081,8 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
           return {
             success: false,
             error: `Copy the blank test sheets before populating them. Missing file: ${targetPath}`,
-            files: testSheetTargetPaths
+            files: populationTargetPaths,
+            localDirectory: localTestSheetsDirectory
           };
         }
         throw err;
@@ -1064,6 +1098,29 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
       const populationScriptPath = getPopulateTestSheetScriptPath();
       await fs.promises.access(populationScriptPath, fs.constants.R_OK);
       if (system === 'invia' || system === 'virsa' || system === 'inlux') {
+        const isDigitalTestSheet = testSheetTargetPaths.includes(targetPath);
+        const workbookType = isDigitalTestSheet
+          ? 'DigitalTestSheet'
+          : targetPath === localRecordTargetPaths[0]
+            ? 'MinorDeviation'
+            : 'TestAcceptance';
+        const workbookCellMappings = isDigitalTestSheet
+          ? cellMappings
+          : recordCellMappings[workbookType === 'MinorDeviation'
+            ? 'minorDeviation'
+            : 'testAcceptance'];
+        const now = new Date();
+        const formattedDate = [
+          String(now.getDate()).padStart(2, '0'),
+          String(now.getMonth() + 1).padStart(2, '0'),
+          now.getFullYear()
+        ].join('/');
+        const sheetCombination = isDigitalTestSheet
+          ? combinationsByTargetName.get(path.basename(targetPath))
+          : undefined;
+        const hasPL = sheetCombination?.pl === true
+          ? 'Yes'
+          : 'No';
         try {
           await execFileAsync('powershell.exe', [
             '-NoProfile',
@@ -1080,7 +1137,13 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
             (testSheetMetadata.serialNumber || request.serialNumber || '').trim(),
             (testSheetMetadata.powerMeterSerialNumber || '').trim(),
             (testSheetMetadata.powerMeterHeadSerialNumber || '').trim(),
-            JSON.stringify(cellMappings)
+            JSON.stringify(workbookCellMappings),
+            typeof request?.technicianName === 'string' && request.technicianName.trim()
+              ? request.technicianName.trim()
+              : 'M. Brown',
+            formattedDate,
+            hasPL,
+            workbookType
           ]);
         } catch (error) {
           const output = String(error.stderr || error.stdout || error.message || 'Unknown PowerShell error')
@@ -1092,16 +1155,16 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
       stagedPaths.push(stagedPath);
     }
 
-    for (const targetPath of testSheetTargetPaths) {
-      const targetStats = await fs.promises.stat(targetPath);
-      if (!targetStats.isFile() || targetStats.size === 0) {
-        throw new Error(`The populated test sheet is missing or empty: ${targetPath}`);
+    for (const [index, stagedPath] of stagedPaths.entries()) {
+      const stagedStats = await fs.promises.stat(stagedPath);
+      if (!stagedStats.isFile() || stagedStats.size === 0) {
+        throw new Error(`The populated workbook is missing or empty: ${populationTargetPaths[index]}`);
       }
     }
 
     replacementBackups = [];
     for (const [index, stagedPath] of stagedPaths.entries()) {
-      const targetPath = testSheetTargetPaths[index];
+      const targetPath = populationTargetPaths[index];
       const backupPath = path.join(
         path.dirname(targetPath),
         `.${path.basename(targetPath)}.blank-${process.pid}-${Date.now()}-${index}.bak`
@@ -1116,7 +1179,7 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
       }
     }
 
-    const verifiedFiles = await Promise.all(testSheetTargetPaths.map(async (targetPath) => {
+    const verifiedFiles = await Promise.all(populationTargetPaths.map(async (targetPath) => {
       const stats = await fs.promises.stat(targetPath);
       if (!stats.isFile() || stats.size === 0) {
         throw new Error(`The populated test sheet could not be verified: ${targetPath}`);
@@ -1136,8 +1199,10 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
     return {
       success: true,
       files: verifiedFiles,
+      testSheetFiles: testSheetTargetPaths,
       outputDirectory: targetDirectory,
-      localDirectory: localTestSheetsDirectory
+      localDirectory: localTestSheetsDirectory,
+      recordDirectory: localInternalDataDirectory
     };
   } catch (err) {
     console.error('Failed to create test sheets:', err);

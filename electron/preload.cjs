@@ -42,7 +42,9 @@ contextBridge.exposeInMainWorld('desktopAPI', {
     combinations,
     overwrite,
     testSheetMetadata,
-    cellMappings
+    cellMappings,
+    technicianName,
+    recordCellMappings
   ) => ipcRenderer.invoke('create-test-sheets', {
     operation,
     system,
@@ -57,7 +59,9 @@ contextBridge.exposeInMainWorld('desktopAPI', {
     combinations,
     overwrite,
     testSheetMetadata,
-    cellMappings
+    cellMappings,
+    technicianName,
+    recordCellMappings
   }),
   findNetworkSystemFolder: (partNumber, customerName, configuredLocation) =>
     ipcRenderer.invoke('find-network-system-folder', {

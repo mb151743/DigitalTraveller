@@ -39,6 +39,7 @@ export type TestSheetResult =
       testSheetFiles?: string[];
       outputDirectory?: string;
       localDirectory?: string;
+      recordDirectory?: string;
     }
   | { success: false; conflicts: string[] }
   | {
@@ -47,6 +48,7 @@ export type TestSheetResult =
       files?: string[];
       outputDirectory?: string;
       localDirectory?: string;
+      recordDirectory?: string;
     };
 
 export interface DigitalTestSheetMetadata {
@@ -64,11 +66,24 @@ export type DigitalTestSheetField =
   | 'partNumber'
   | 'serialNumber'
   | 'powerMeterSerialNumber'
-  | 'powerMeterHeadSerialNumber';
+  | 'powerMeterHeadSerialNumber'
+  | 'technicianName'
+  | 'currentDate'
+  | 'hasPL';
 
 export type DigitalTestSheetCellMappings = Partial<Record<DigitalTestSheetField, string>>;
 
 export type DigitalTestSheetCellMappingsBySystem = Record<string, DigitalTestSheetCellMappings>;
+
+export type RecordWorkbookField = Exclude<DigitalTestSheetField, 'hasPL'>;
+export type RecordWorkbookCellMappings = Partial<Record<RecordWorkbookField, string>>;
+
+export interface RecordCellMappings {
+  minorDeviation: RecordWorkbookCellMappings;
+  testAcceptance: RecordWorkbookCellMappings;
+}
+
+export type RecordCellMappingsBySystem = Record<string, RecordCellMappings>;
 
 export interface MotorScanEntry {
   motorName: string;

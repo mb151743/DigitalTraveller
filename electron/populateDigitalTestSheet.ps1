@@ -7,7 +7,11 @@ param(
   [Parameter(Mandatory = $true)][AllowEmptyString()][string]$SerialNumber,
   [Parameter(Mandatory = $true)][AllowEmptyString()][string]$PowerMeterSerialNumber,
   [Parameter(Mandatory = $true)][AllowEmptyString()][string]$PowerMeterHeadSerialNumber,
-  [Parameter(Mandatory = $true)][string]$CellMappingsJson
+  [Parameter(Mandatory = $true)][string]$CellMappingsJson,
+  [Parameter(Mandatory = $true)][AllowEmptyString()][string]$TechnicianName,
+  [Parameter(Mandatory = $true)][AllowEmptyString()][string]$CurrentDate,
+  [Parameter(Mandatory = $true)][AllowEmptyString()][string]$HasPL,
+  [Parameter(Mandatory = $true)][ValidateSet('DigitalTestSheet', 'MinorDeviation', 'TestAcceptance')][string]$WorkbookType
 )
 
 $ErrorActionPreference = 'Stop'
@@ -70,21 +74,25 @@ try {
     'rel',
     'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
   )
-  $worksheetNames = switch ($System) {
-    'inLux' { @('inLux Test Sheet') }
-    'Virsa' { @('Virsa Test Sheet') }
-    'InVia' { @('InVia Test Sheet', 'Digital Test Sheet', 'Final Test Sheet') }
-  }
   $sheet = $null
-  foreach ($worksheetName in $worksheetNames) {
-    $sheet = $workbook.SelectSingleNode(
-      "//main:sheet[@name='$worksheetName']",
-      $workbookNamespaces
-    )
-    if ($sheet) { break }
+  if ($WorkbookType -eq 'DigitalTestSheet') {
+    $worksheetNames = switch ($System) {
+      'inLux' { @('inLux Test Sheet') }
+      'Virsa' { @('Virsa Test Sheet') }
+      'InVia' { @('InVia Test Sheet', 'Digital Test Sheet', 'Final Test Sheet') }
+    }
+    foreach ($worksheetName in $worksheetNames) {
+      $sheet = $workbook.SelectSingleNode(
+        "//main:sheet[@name='$worksheetName']",
+        $workbookNamespaces
+      )
+      if ($sheet) { break }
+    }
+  } else {
+    $sheet = $workbook.SelectSingleNode('//main:sheets/main:sheet[1]', $workbookNamespaces)
   }
   if (-not $sheet) {
-    throw "A configured worksheet for the $System test sheet was not found."
+    throw "A worksheet for the $WorkbookType $System workbook was not found."
   }
 
   $relationshipId = $sheet.GetAttribute(
@@ -117,6 +125,9 @@ try {
     serialNumber = $SerialNumber
     powerMeterSerialNumber = $PowerMeterSerialNumber
     powerMeterHeadSerialNumber = $PowerMeterHeadSerialNumber
+    technicianName = $TechnicianName
+    currentDate = $CurrentDate
+    hasPL = $HasPL
   }
   foreach ($field in $values.Keys) {
     $cellReference = $cellMappings.$field

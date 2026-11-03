@@ -117,7 +117,8 @@ interface StepDialogProps {
   onCreateTestSheets: (
     operation: 'prepare' | 'populate' | 'publish',
     overwrite: boolean,
-    testSheetMetadata?: DigitalTestSheetMetadata
+    testSheetMetadata?: DigitalTestSheetMetadata,
+    technicianName?: string
   ) => Promise<TestSheetResult>;
   digitalTestSheetSettings: DigitalTestSheetSettings;
   onSaveDigitalTestSheetSettings: (
@@ -191,7 +192,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   const isSystemFoldersStep = step.name === SYSTEM_FOLDERS_STEP_NAME;
   const isCreateTestSheetsStep = step.name === CREATE_TEST_SHEETS_STEP_NAME;
   const hasPreparedTestSheets = notes.includes('Blank test sheets copied:');
-  const hasPopulatedTestSheets = notes.includes('Test sheets populated locally:');
+  const hasPopulatedTestSheets = notes.includes('Test workbooks populated locally:');
   const isPreSystemTestStep = step.name === PRE_SYSTEM_TEST_STEP_NAME;
   const isUpdateNetworkSaveLocationStep =
     step.name === UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME;
@@ -510,6 +511,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
         'Blank test sheets copied:',
         ...sheetFiles.map((file) => `- ${file.split(/[\\/]/).pop()}`),
         `Local staging folder: ${result.localDirectory || result.outputDirectory || 'See the configured Local Save Location.'}`,
+        `Local record templates: ${result.recordDirectory || 'the local Internal data folder'}`,
         '',
         'Blank copies are editable. Run Part 2 to populate their cells, then Part 3 to publish them to the network.'
       ].join('\n');
@@ -530,7 +532,13 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   ): Promise<boolean> => {
     setIsCreatingTestSheets(true);
     try {
-      let result = await onCreateTestSheets('populate', false, metadata);
+      const sheetMetadata = normalizeTestSheetMetadata(metadata || testSheetMetadata);
+      let result = await onCreateTestSheets(
+        'populate',
+        false,
+        sheetMetadata,
+        signoffTechnician
+      );
       if (!result.success) {
         const remainingFiles = 'files' in result && result.files?.length
           ? `\n\n${result.files.length} workbook(s) remain available for editing locally in:\n${result.localDirectory || result.outputDirectory || result.files[0].replace(/[\\/][^\\/]*$/, '')}`
@@ -546,9 +554,10 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
       setIsTestSheetDataPromptOpen(false);
       const report = [
         'Blank test sheets copied:',
-        'Test sheets populated locally:',
+        'Test workbooks populated locally:',
         ...result.files.map((file) => `- ${file.split(/[\\/]/).pop()}`),
         `Local staging folder: ${result.localDirectory || result.outputDirectory || 'See the configured Local Save Location.'}`,
+        `Local record folder: ${result.recordDirectory || 'the local Internal data folder'}`,
         '',
         'Review the workbooks, then run Part 3 to copy them to the network.'
       ].join('\n');
@@ -595,11 +604,11 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
         return;
       }
 
-      const sheetFiles = result.testSheetFiles || result.files;
       const report = [
         'Test sheets published to network:',
-        ...sheetFiles.map((file) => `- ${file.split(/[\\/]/).pop()}`),
+        ...result.files.map((file) => `- ${file.split(/[\\/]/).pop()}`),
         `Network folder: ${result.outputDirectory || 'See the configured Network Save Location.'}`,
+        `Network record folder: ${result.recordDirectory || 'the system Internal data folder'}`,
         `Local copies retained in: ${result.localDirectory || 'the local staging folder'}`
       ].join('\n');
       setNotes(report);
@@ -859,6 +868,8 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
               customerName={customerName}
               saveLocation={saveLocation}
               combinations={laserGratingCombinations}
+              laserTypes={digitalTestSheetSettings.laserTypes[system] || []}
+              gratingTypes={digitalTestSheetSettings.gratingTypes[system] || []}
               onChange={onUpdateLaserGratingCombinations}
               onCreateFiles={onCreateLaserGratingFiles}
               onComplete={handleLaserFilesCreated}
@@ -1051,10 +1062,11 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
           {isCreateTestSheetsStep && (
             <section className="space-y-3 rounded-lg border border-blue-800/70 bg-blue-950/30 p-4">
               <p className="text-xs text-slate-300">
-                Work locally first: copy one editable workbook per laser/grating combination to
-                the local system folder, populate it, then publish the finished workbooks to the
-                network system folder&apos;s <span className="font-mono">Internal data\Digital Test Sheets</span>.
-                The filenames use the format <span className="font-mono">532nm_1200</span>.
+                Work locally first: Part 1 copies the record templates and one editable digital
+                test workbook per laser/grating combination. Part 2 fills in all three workbook
+                types; Part 3 publishes the two records to <span className="font-mono">Internal data</span>
+                and digital test sheets to <span className="font-mono">Internal data\Digital Test Sheets</span>.
+                Digital test sheet filenames use the format <span className="font-mono">532nm_1200</span>.
               </p>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -1071,7 +1083,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
                   disabled={isCreatingTestSheets || !hasPreparedTestSheets}
                   className="rounded-lg border border-emerald-500/60 bg-emerald-700/70 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {isCreatingTestSheets ? 'Populating test sheets…' : 'Part 2: Populate Test Sheets'}
+                  {isCreatingTestSheets ? 'Populating workbooks…' : 'Part 2: Populate Workbooks'}
                 </button>
                 <button
                   type="button"

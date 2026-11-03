@@ -14,11 +14,17 @@ import {
   Check,
   RotateCcw,
   Plus,
+  Trash2,
   Boxes,
   FileText,
   Palette
 } from 'lucide-react';
-import { SystemType, TravellerRecord, WorkflowStep } from '../types/traveller';
+import {
+  RecordWorkbookField,
+  SystemType,
+  TravellerRecord,
+  WorkflowStep
+} from '../types/traveller';
 import { WorkflowTemplateService, WorkflowTemplate } from '../services/workflowTemplateService';
 import {
   NetworkShareConfigService,
@@ -38,7 +44,7 @@ interface AdminSettingsModalProps {
   system: SystemType;
   traveller: TravellerRecord;
   theme?: 'dark' | 'light';
-  initialTab?: 'excel' | 'workflows' | 'systems' | 'appearance';
+  initialTab?: 'excel' | 'cellLocations' | 'workflows' | 'systems' | 'appearance';
   colorScheme: 'standard' | 'monochrome' | 'orange';
   onChangeColorScheme: (scheme: 'standard' | 'monochrome' | 'orange') => void;
   logoImage: string;
@@ -67,7 +73,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
   if (!isOpen) return null;
 
   const [activeTab, setActiveTab] = useState<
-    'excel' | 'workflows' | 'systems' | 'appearance'
+    'excel' | 'cellLocations' | 'workflows' | 'systems' | 'appearance'
   >(initialTab);
   const [registeredSystems, setRegisteredSystems] = useState<string[]>(() =>
     SystemRegistryService.getSystems()
@@ -95,9 +101,14 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
   const [cellMappingDraft, setCellMappingDraft] = useState(
     () => DigitalTestSheetSettingsService.get().cellMappings
   );
+  const [recordCellMappingDraft, setRecordCellMappingDraft] = useState(
+    () => DigitalTestSheetSettingsService.get().recordCellMappings
+  );
   const [virsaSettingsError, setVirsaSettingsError] = useState<string | null>(null);
   const [cellMappingError, setCellMappingError] = useState<string | null>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
+  const [newLaserType, setNewLaserType] = useState('');
+  const [newGratingType, setNewGratingType] = useState('');
 
   const multiWorkflowFileInputRef = useRef<HTMLInputElement>(null);
   const excelSyncInputRef = useRef<HTMLInputElement>(null);
@@ -245,10 +256,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
     }
   };
 
-  const handleUpdateCellMapping = (
-    field: DigitalTestSheetField,
-    value: string
-  ) => {
+  const handleUpdateCellMapping = (field: DigitalTestSheetField, value: string) => {
     const normalizedValue = value.trim().toUpperCase();
     const updatedDraft = {
       ...cellMappingDraft,
@@ -287,6 +295,69 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
     } catch (error) {
       setCellMappingError(
         error instanceof Error ? error.message : 'Could not save the test sheet cell mappings.'
+      );
+    }
+  };
+
+  const handleUpdateRecordCellMapping = (
+    recordType: 'minorDeviation' | 'testAcceptance',
+    field: RecordWorkbookField,
+    value: string
+  ) => {
+    const normalizedValue = value.trim().toUpperCase();
+    const updatedDraft = {
+      ...recordCellMappingDraft,
+      [selectedSystemFilter]: {
+        minorDeviation: {
+          ...(recordCellMappingDraft[selectedSystemFilter]?.minorDeviation || {}),
+          ...(recordType === 'minorDeviation' ? { [field]: normalizedValue } : {})
+        },
+        testAcceptance: {
+          ...(recordCellMappingDraft[selectedSystemFilter]?.testAcceptance || {}),
+          ...(recordType === 'testAcceptance' ? { [field]: normalizedValue } : {})
+        }
+      }
+    };
+    setRecordCellMappingDraft(updatedDraft);
+
+    if (normalizedValue && !/^[A-Z]{1,3}[1-9]\d*$/.test(normalizedValue)) {
+      setCellMappingError('Enter an Excel cell reference such as C5, or leave it blank.');
+      return;
+    }
+
+    const updatedSettings: DigitalTestSheetSettings = {
+      ...digitalTestSheetSettings,
+      recordCellMappings: updatedDraft
+    };
+    setDigitalTestSheetSettings(updatedSettings);
+    try {
+      DigitalTestSheetSettingsService.save(updatedSettings);
+      setCellMappingError(null);
+    } catch (error) {
+      setCellMappingError(
+        error instanceof Error ? error.message : 'Could not save the record workbook cell mappings.'
+      );
+    }
+  };
+
+  const handleUpdateTypeOptions = (
+    field: 'laserTypes' | 'gratingTypes',
+    values: string[]
+  ) => {
+    const updated: DigitalTestSheetSettings = {
+      ...digitalTestSheetSettings,
+      [field]: {
+        ...digitalTestSheetSettings[field],
+        [selectedSystemFilter]: [...new Set(values.map((value) => value.trim()).filter(Boolean))]
+      }
+    };
+    setDigitalTestSheetSettings(updated);
+    try {
+      DigitalTestSheetSettingsService.save(updated);
+      setCellMappingError(null);
+    } catch (error) {
+      setCellMappingError(
+        error instanceof Error ? error.message : 'Could not save laser and grating types.'
       );
     }
   };
@@ -596,6 +667,21 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
               <span>Excel Sheets &amp; Save Locations</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('cellLocations')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all ${
+                activeTab === 'cellLocations'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : isDark
+                  ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Cell Locations</span>
             </button>
 
             <button
@@ -1081,7 +1167,11 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                       onChange={(event) =>
                         handleUpdateVirsaTestSheetSetting('powerMeterSerialNumber', event.target.value)
                       }
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-hidden focus:border-emerald-500"
+                      className={`w-full rounded-lg border px-3 py-2 text-xs font-mono focus:outline-hidden focus:border-emerald-500 ${
+                        isDark
+                          ? 'bg-slate-900 border-slate-700 text-slate-100'
+                          : 'bg-white border-slate-300 text-slate-900'
+                      }`}
                     />
                   </label>
                   <label className="space-y-1 text-[11px] text-slate-400">
@@ -1092,54 +1182,16 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                       onChange={(event) =>
                         handleUpdateVirsaTestSheetSetting('powerMeterHeadSerialNumber', event.target.value)
                       }
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-hidden focus:border-emerald-500"
+                      className={`w-full rounded-lg border px-3 py-2 text-xs font-mono focus:outline-hidden focus:border-emerald-500 ${
+                        isDark
+                          ? 'bg-slate-900 border-slate-700 text-slate-100'
+                          : 'bg-white border-slate-300 text-slate-900'
+                      }`}
                     />
                   </label>
                 </div>
                 {virsaSettingsError && (
                   <p role="alert" className="text-xs text-rose-300">{virsaSettingsError}</p>
-                )}
-              </section>
-
-              <section
-                className={`p-4 rounded-xl border space-y-3 ${
-                  isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-white border-slate-200'
-                }`}
-              >
-                <div>
-                  <h4 className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                    Digital Test Sheet Cell Locations
-                  </h4>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Set the destination cell for each value written to {selectedSystemFilter} workbooks. Leave a field blank to skip it.
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {([
-                    ['jobNumber', 'Job Number'],
-                    ['customerName', 'Customer Name'],
-                    ['partNumber', 'Part Number'],
-                    ['serialNumber', 'Serial Number'],
-                    ['powerMeterSerialNumber', 'Power Meter Serial Number'],
-                    ['powerMeterHeadSerialNumber', 'Power Meter Head Serial Number']
-                  ] as const).map(([field, label]) => (
-                    <label key={field} className="space-y-1 text-[11px] text-slate-400">
-                      <span>{label}</span>
-                      <input
-                        type="text"
-                        aria-label={`${selectedSystemFilter} ${label} cell`}
-                        value={
-                          cellMappingDraft[selectedSystemFilter]?.[field] || ''
-                        }
-                        onChange={(event) => handleUpdateCellMapping(field, event.target.value)}
-                        placeholder="e.g. C5"
-                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-mono text-slate-100 focus:border-emerald-500 focus:outline-hidden"
-                      />
-                    </label>
-                  ))}
-                </div>
-                {cellMappingError && (
-                  <p role="alert" className="text-xs text-rose-300">{cellMappingError}</p>
                 )}
               </section>
 
@@ -1213,6 +1265,243 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                   </button>
                 </div>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'cellLocations' && (
+            <div className="space-y-4">
+              <section
+                className={`rounded-xl border p-4 ${
+                  isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-white border-slate-200'
+                }`}
+              >
+                <h4 className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  Select System
+                </h4>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {registeredSystems.map((sys) => (
+                    <button
+                      key={sys}
+                      type="button"
+                      onClick={() => setSelectedSystemFilter(sys)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                        selectedSystemFilter === sys
+                          ? 'bg-emerald-600 text-white'
+                          : isDark
+                          ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      {sys}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section
+                className={`rounded-xl border p-4 ${
+                  isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-white border-slate-200'
+                }`}
+              >
+                <div>
+                  <h4 className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    Digital Test Sheet Cell Locations
+                  </h4>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Set the destination cells for values written to {selectedSystemFilter} test sheets.
+                    Leave a field blank to skip it.
+                  </p>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {([
+                    ['jobNumber', 'Job Number'],
+                    ['customerName', 'Customer Name'],
+                    ['partNumber', 'Part Number'],
+                    ['serialNumber', 'Serial Number'],
+                    ['powerMeterSerialNumber', 'Power Meter Serial Number'],
+                    ['powerMeterHeadSerialNumber', 'Power Meter Head Serial Number'],
+                    ['hasPL', 'PL Selected (Yes/No)']
+                  ] as const).map(([field, label]) => (
+                    <label key={field} className="space-y-1 text-[11px] text-slate-400">
+                      <span>{label}</span>
+                      <input
+                        type="text"
+                        aria-label={`${selectedSystemFilter} ${label} cell`}
+                        value={cellMappingDraft[selectedSystemFilter]?.[field] || ''}
+                        onChange={(event) => handleUpdateCellMapping(field, event.target.value)}
+                        placeholder="e.g. C5"
+                        className={`w-full rounded-lg border px-3 py-2 text-xs font-mono focus:border-emerald-500 focus:outline-hidden ${
+                          isDark
+                            ? 'border-slate-700 bg-slate-900 text-slate-100'
+                            : 'border-slate-300 bg-white text-slate-900'
+                        }`}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </section>
+
+              <section
+                className={`space-y-4 rounded-xl border p-4 ${
+                  isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-white border-slate-200'
+                }`}
+              >
+                <div>
+                  <h4 className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    Record Workbook Cell Locations
+                  </h4>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Configure cells for traveller details in the local record workbooks.
+                  </p>
+                </div>
+                {([
+                  {
+                    key: 'minorDeviation',
+                    title: 'Minor Deviation Record',
+                    fields: [
+                      ['partNumber', 'Part Number'],
+                      ['customerName', 'Customer Name'],
+                      ['serialNumber', 'Serial Number']
+                    ]
+                  },
+                  {
+                    key: 'testAcceptance',
+                    title: 'Test Acceptance Record',
+                    fields: [
+                      ['partNumber', 'Part Number'],
+                      ['customerName', 'Customer Name'],
+                      ['serialNumber', 'Serial Number'],
+                      ['technicianName', 'Technician Name'],
+                      ['currentDate', 'Current Date']
+                    ]
+                  }
+                ] as const).map(({ key, title, fields }) => (
+                  <div key={key} className="space-y-2">
+                    <h5 className={`text-[11px] font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                      {title}
+                    </h5>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {fields.map(([field, label]) => (
+                        <label key={field} className="space-y-1 text-[11px] text-slate-400">
+                          <span>{label}</span>
+                          <input
+                            type="text"
+                            aria-label={`${selectedSystemFilter} ${title} ${label} cell`}
+                            value={recordCellMappingDraft[selectedSystemFilter]?.[key]?.[field] || ''}
+                            onChange={(event) =>
+                              handleUpdateRecordCellMapping(key, field, event.target.value)
+                            }
+                            placeholder="e.g. C4"
+                            className={`w-full rounded-lg border px-3 py-2 text-xs font-mono focus:border-emerald-500 focus:outline-hidden ${
+                              isDark
+                                ? 'border-slate-700 bg-slate-900 text-slate-100'
+                                : 'border-slate-300 bg-white text-slate-900'
+                            }`}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </section>
+
+              {([
+                {
+                  key: 'laserTypes' as const,
+                  title: 'Laser Types',
+                  value: newLaserType,
+                  setValue: setNewLaserType
+                },
+                {
+                  key: 'gratingTypes' as const,
+                  title: 'Grating Types',
+                  value: newGratingType,
+                  setValue: setNewGratingType
+                }
+              ]).map(({ key, title, value, setValue }) => {
+                const values = digitalTestSheetSettings[key][selectedSystemFilter] || [];
+                return (
+                  <section
+                    key={key}
+                    className={`rounded-xl border p-4 ${
+                      isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-white border-slate-200'
+                    }`}
+                  >
+                    <h4 className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      {title}
+                    </h4>
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      These options are shown in Select Laser &amp; Grating Combinations for {selectedSystemFilter}.
+                    </p>
+                    <div className="mt-3 overflow-hidden rounded-lg border border-slate-700">
+                      <table className="w-full text-left text-xs">
+                        <thead className={isDark ? 'bg-slate-900 text-slate-300' : 'bg-slate-100 text-slate-700'}>
+                          <tr>
+                            <th className="px-3 py-2 font-semibold">{title}</th>
+                            <th className="w-20 px-3 py-2 text-right font-semibold">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className={isDark ? 'divide-y divide-slate-800' : 'divide-y divide-slate-200'}>
+                          {values.map((item) => (
+                            <tr key={item}>
+                              <td className={`px-3 py-2 font-mono ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                                {item}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <button
+                                  type="button"
+                                  aria-label={`Remove ${title} ${item}`}
+                                  onClick={() => handleUpdateTypeOptions(key, values.filter((entry) => entry !== item))}
+                                  className="text-rose-400 hover:text-rose-300"
+                                >
+                                  <Trash2 className="inline h-4 w-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {values.length === 0 && (
+                            <tr>
+                              <td colSpan={2} className="px-3 py-3 text-center text-slate-500">
+                                No {title.toLowerCase()} configured.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <form
+                      className="mt-3 flex gap-2"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const nextValue = value.trim();
+                        if (!nextValue || values.includes(nextValue)) return;
+                        handleUpdateTypeOptions(key, [...values, nextValue]);
+                        setValue('');
+                      }}
+                    >
+                      <input
+                        value={value}
+                        onChange={(event) => setValue(event.target.value)}
+                        aria-label={`New ${title}`}
+                        placeholder={key === 'laserTypes' ? 'e.g. 532' : 'e.g. 1200'}
+                        className={`min-w-0 flex-1 rounded-lg border px-3 py-2 text-xs ${
+                          isDark
+                            ? 'border-slate-700 bg-slate-900 text-slate-100'
+                            : 'border-slate-300 bg-white text-slate-900'
+                        }`}
+                      />
+                      <button
+                        type="submit"
+                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-500"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Add
+                      </button>
+                    </form>
+                  </section>
+                );
+              })}
+              {cellMappingError && <p role="alert" className="text-xs text-rose-500">{cellMappingError}</p>}
             </div>
           )}
 

@@ -13,6 +13,8 @@ interface LaserGratingStepPanelProps {
   customerName: string;
   saveLocation: string;
   combinations: LaserGratingCombination[];
+  laserTypes: string[];
+  gratingTypes: string[];
   onChange: (combinations: LaserGratingCombination[]) => void;
   onCreateFiles: (overwrite: boolean) => Promise<LaserGratingFileResult>;
   onComplete: (files: string[]) => void;
@@ -25,6 +27,8 @@ export const LaserGratingStepPanel: React.FC<LaserGratingStepPanelProps> = ({
   customerName,
   saveLocation,
   combinations,
+  laserTypes,
+  gratingTypes,
   onChange,
   onCreateFiles,
   onComplete
@@ -131,29 +135,38 @@ export const LaserGratingStepPanel: React.FC<LaserGratingStepPanelProps> = ({
               </label>
               <label className="space-y-1 text-[11px] text-slate-400">
                 <span>Laser wavelength (nm)</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
+                <select
                   value={combination.wavelengthNm}
                   onChange={(event) => updateRow(index, 'wavelengthNm', event.target.value)}
-                  placeholder="532"
                   className="w-full rounded border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs text-slate-100"
-                />
+                >
+                  <option value="">Select laser</option>
+                  {combination.wavelengthNm && !laserTypes.includes(combination.wavelengthNm) && (
+                    <option value={combination.wavelengthNm}>{combination.wavelengthNm}</option>
+                  )}
+                  {laserTypes.map((laser) => <option key={laser} value={laser}>{laser}</option>)}
+                </select>
               </label>
               <label className="space-y-1 text-[11px] text-slate-400">
                 <span>Grating density (lines/mm)</span>
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
+                <select
                   value={combination.gratingDensityLinesPerMm}
                   onChange={(event) =>
                     updateRow(index, 'gratingDensityLinesPerMm', event.target.value)
                   }
-                  placeholder="2400"
                   className="w-full rounded border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs text-slate-100"
-                />
+                >
+                  <option value="">Select grating</option>
+                  {combination.gratingDensityLinesPerMm &&
+                    !gratingTypes.includes(combination.gratingDensityLinesPerMm) && (
+                      <option value={combination.gratingDensityLinesPerMm}>
+                        {combination.gratingDensityLinesPerMm}
+                      </option>
+                    )}
+                  {gratingTypes.map((grating) => (
+                    <option key={grating} value={grating}>{grating}</option>
+                  ))}
+                </select>
               </label>
               <label className="flex items-center gap-2 pb-2 text-[11px] text-slate-400">
                 <input

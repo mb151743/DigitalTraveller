@@ -9,7 +9,8 @@ import {
   NetworkSaveLocationOperationResult,
   MotorScanEntry,
   MotorScanSaveResult,
-  NetworkStatusResult
+  NetworkStatusResult,
+  RecordCellMappings
 } from './traveller';
 
 export interface CleanupFolder {
@@ -76,7 +77,9 @@ declare global {
         combinations: LaserGratingCombination[],
         overwrite: boolean,
         testSheetMetadata?: DigitalTestSheetMetadata,
-        cellMappings?: DigitalTestSheetCellMappings
+        cellMappings?: DigitalTestSheetCellMappings,
+        technicianName?: string,
+        recordCellMappings?: RecordCellMappings
       ) => Promise<TestSheetResult>;
       updateNetworkSaveLocation: (
         serialNumber: string,
