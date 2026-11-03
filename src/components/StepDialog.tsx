@@ -503,6 +503,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
       const report = [
         'Blank test sheets copied:',
         ...sheetFiles.map((file) => `- ${file.split(/[\\/]/).pop()}`),
+        `Output folder: ${result.outputDirectory || 'See the configured Network Save Location.'}`,
         '',
         'Blank copies are editable. Run Part 2 to populate their cells.'
       ].join('\n');
@@ -537,7 +538,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
       }
       if (!result.success) {
         const remainingFiles = 'files' in result && result.files?.length
-          ? `\n\nThe copied workbooks remain available for editing in:\n${result.files[0].replace(/[\\/][^\\/]*$/, '')}`
+          ? `\n\n${result.files.length} workbook(s) remain available for editing in:\n${result.outputDirectory || result.files[0].replace(/[\\/][^\\/]*$/, '')}`
           : '';
         setCompletionError(
           'error' in result
@@ -550,7 +551,8 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
       setIsTestSheetDataPromptOpen(false);
       const report = [
         'Test sheets populated:',
-        ...result.files.map((file) => `- ${file.split(/[\\/]/).pop()}`)
+        ...result.files.map((file) => `- ${file.split(/[\\/]/).pop()}`),
+        `Output folder: ${result.outputDirectory || 'See the configured Network Save Location.'}`
       ].join('\n');
       setNotes(report);
       onUpdateStatus(step.id, 'Complete', report, signoffTechnician);

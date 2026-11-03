@@ -33,9 +33,9 @@ export interface NetworkStatusResult {
 }
 
 export type TestSheetResult =
-  | { success: true; files: string[]; testSheetFiles?: string[] }
+  | { success: true; files: string[]; testSheetFiles?: string[]; outputDirectory?: string }
   | { success: false; conflicts: string[] }
-  | { success: false; error: string; files?: string[] };
+  | { success: false; error: string; files?: string[]; outputDirectory?: string };
 
 export interface DigitalTestSheetMetadata {
   jobNumber: string;

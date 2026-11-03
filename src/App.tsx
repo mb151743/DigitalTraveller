@@ -1119,8 +1119,8 @@ export const App: React.FC = () => {
     );
     if (result.success) {
       setNotification(operation === 'prepare'
-        ? `Created ${result.testSheetFiles?.length || 0} editable blank test sheet(s).`
-        : `Populated ${result.files.length} test sheet(s).`);
+        ? `Created ${result.testSheetFiles?.length || 0} editable blank test sheet(s) in ${result.outputDirectory || 'the network folder'}.`
+        : `Populated ${result.files.length} test sheet(s) in ${result.outputDirectory || 'the network folder'}.`);
     }
     return result;
   };

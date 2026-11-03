@@ -717,6 +717,8 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
   let testSheetTargetPaths = [];
   let copiedTestSheetPaths = [];
   let temporaryTestSheetPaths = [];
+  let replacementBackups = [];
+  let existingTestSheetPaths = [];
   try {
     const systemDirectory = await getTestSheetSystemDirectory(request);
     const system = typeof request?.system === 'string'
@@ -1005,14 +1007,67 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
       stagedPaths.push(stagedPath);
     }
 
-    for (const [index, stagedPath] of stagedPaths.entries()) {
-      await fs.promises.rename(stagedPath, testSheetTargetPaths[index]);
+    for (const targetPath of testSheetTargetPaths) {
+      const targetStats = await fs.promises.stat(targetPath);
+      if (!targetStats.isFile() || targetStats.size === 0) {
+        throw new Error(`The populated test sheet is missing or empty: ${targetPath}`);
+      }
     }
+
+    replacementBackups = [];
+    for (const [index, stagedPath] of stagedPaths.entries()) {
+      const targetPath = testSheetTargetPaths[index];
+      const backupPath = path.join(
+        path.dirname(targetPath),
+        `.${path.basename(targetPath)}.blank-${process.pid}-${Date.now()}-${index}.bak`
+      );
+      await fs.promises.rename(targetPath, backupPath);
+      replacementBackups.push({ targetPath, backupPath, replaced: false });
+      await fs.promises.rename(stagedPath, targetPath);
+      replacementBackups[index].replaced = true;
+      const committedStats = await fs.promises.stat(targetPath);
+      if (!committedStats.isFile() || committedStats.size === 0) {
+        throw new Error(`The populated test sheet could not be verified: ${targetPath}`);
+      }
+    }
+
+    const verifiedFiles = await Promise.all(testSheetTargetPaths.map(async (targetPath) => {
+      const stats = await fs.promises.stat(targetPath);
+      if (!stats.isFile() || stats.size === 0) {
+        throw new Error(`The populated test sheet could not be verified: ${targetPath}`);
+      }
+      return targetPath;
+    }));
+
+    for (const backup of replacementBackups) {
+      try {
+        await fs.promises.unlink(backup.backupPath);
+      } catch (cleanupError) {
+        console.warn(`Could not remove blank workbook backup ${backup.backupPath}:`, cleanupError);
+      }
+    }
+    replacementBackups = [];
     temporaryTestSheetPaths = [];
-    return { success: true, files: testSheetTargetPaths };
+    return {
+      success: true,
+      files: verifiedFiles,
+      outputDirectory: targetDirectory
+    };
   } catch (err) {
     console.error('Failed to create test sheets:', err);
     const cleanupErrors = [];
+    for (const backup of [...replacementBackups].reverse()) {
+      try {
+        if (backup.replaced) {
+          await fs.promises.unlink(backup.targetPath);
+        }
+        await fs.promises.rename(backup.backupPath, backup.targetPath);
+      } catch (rollbackError) {
+        cleanupErrors.push(
+          `Could not restore ${backup.targetPath} from its blank backup: ${rollbackError.message}`
+        );
+      }
+    }
     for (const temporaryPath of temporaryTestSheetPaths) {
       try {
         await fs.promises.unlink(temporaryPath);
@@ -1020,11 +1075,23 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
         if (cleanupError.code !== 'ENOENT') cleanupErrors.push(cleanupError.message);
       }
     }
+    for (const targetPath of testSheetTargetPaths) {
+      try {
+        await fs.promises.access(targetPath, fs.constants.F_OK);
+        existingTestSheetPaths.push(targetPath);
+      } catch (fileError) {
+        if (fileError.code !== 'ENOENT') cleanupErrors.push(fileError.message);
+      }
+    }
     return {
       success: false,
       error: `Could not ${request?.operation === 'populate' ? 'populate' : 'create'} test sheets: ${err.message}${cleanupErrors.length ? ` Temporary files could not be removed: ${cleanupErrors.join('; ')}` : ''}`,
       ...(testSheetTargetPaths.length > 0
-        ? { files: request?.operation === 'prepare' ? copiedTestSheetPaths : testSheetTargetPaths }
+        ? {
+            files: existingTestSheetPaths.length > 0
+              ? existingTestSheetPaths
+              : request?.operation === 'prepare' ? copiedTestSheetPaths : []
+          }
         : {})
     };
   }
