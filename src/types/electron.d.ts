@@ -44,6 +44,7 @@ export type CleanupToolbarResult =
 declare global {
   interface Window {
     desktopAPI?: {
+      writeClipboard: (text: string) => Promise<boolean>;
       createLaserGratingFiles: (
         serialNumber: string,
         partNumber: string,
@@ -67,7 +68,7 @@ declare global {
         serialNumber: string,
         partNumber: string,
         customerName: string,
-        saveLocation: string,
+        localSaveLocation: string,
         masterTemplatePath: string,
         testAcceptanceRecordPath: string,
         minorDeviationLogPath: string,

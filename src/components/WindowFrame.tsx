@@ -1,4 +1,5 @@
 import React from 'react';
+import defaultLogo from '../assets/RenishawLogo.png';
 import {
   Minus,
   Square,
@@ -243,7 +244,7 @@ export const WindowFrame: React.FC<WindowFrameProps> = ({
         {children}
 
         <img
-          src={logoImage || '/assets/Renishaw_PRIMARYandSL_orange_black_RGB.png'}
+          src={logoImage || defaultLogo}
           alt=""
           aria-hidden="true"
           className="pointer-events-none absolute bottom-8 right-3 z-10 max-h-14 w-[25%] max-w-48 object-contain object-right opacity-25"

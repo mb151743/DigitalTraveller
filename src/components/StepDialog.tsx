@@ -199,7 +199,12 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   const handleCopyError = async () => {
     if (!completionError) return;
     try {
-      await navigator.clipboard.writeText(completionError);
+      const writeClipboard = window.desktopAPI?.writeClipboard;
+      if (writeClipboard) {
+        await writeClipboard(completionError);
+      } else {
+        await navigator.clipboard.writeText(completionError);
+      }
       setCopiedError(true);
       window.setTimeout(() => setCopiedError(false), 2000);
     } catch (error) {

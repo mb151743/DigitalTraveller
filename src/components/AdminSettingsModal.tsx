@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import defaultLogo from '../assets/RenishawLogo.png';
 import {
   X,
   Settings,
@@ -534,7 +535,9 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
       <div
         className={`w-full max-w-4xl rounded-xl border shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-150 ${
-          isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-300'
+          isDark
+            ? 'bg-slate-900 border-slate-700'
+            : 'admin-settings-light bg-white border-slate-300'
         }`}
       >
         {/* Modal Header */}
@@ -727,7 +730,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="flex h-20 w-64 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 p-2">
                     <img
-                      src={logoImage || '/assets/Renishaw_PRIMARYandSL_orange_black_RGB.png'}
+                      src={logoImage || defaultLogo}
                       alt="Background logo preview"
                       className="max-h-full max-w-full object-contain"
                     />
@@ -826,12 +829,12 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
               </div>
 
               <section
-                className={`p-4 rounded-xl border space-y-3 ${
-                  isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-white border-slate-200'
+                className={`space-y-3 rounded-xl border p-4 ${
+                  isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-50 border-slate-200'
                 }`}
               >
                 <div>
-                  <h4 className="text-xs font-bold text-white">Network Save Location</h4>
+                  <h4 className="text-xs font-bold text-red-500">Network Save Location</h4>
                   <p className="text-[11px] text-slate-400 mt-1">
                     Base folder used to find or create the system folder for {selectedSystemFilter}.
                     Test sheets are saved inside the system folder at Internal data\Digital Test Sheets.
@@ -846,16 +849,20 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                       handleUpdateNetworkSaveLocation(selectedSystemFilter, event.target.value)
                     }
                     placeholder="Enter a local or UNC network folder path"
-                    className={`min-w-0 flex-1 rounded-lg border px-3 py-2 text-xs font-mono focus:border-emerald-500 focus:outline-hidden ${
+                    className={`min-w-0 flex-1 rounded-lg border px-3 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 ${
                       isDark
-                        ? 'border-slate-700 bg-slate-900 text-slate-100 placeholder-slate-500'
-                        : 'border-slate-300 bg-white text-slate-900 placeholder-slate-400'
+                        ? 'bg-slate-900 border-slate-700 text-slate-100 placeholder-slate-500'
+                        : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'
                     }`}
                   />
                   <button
                     type="button"
                     onClick={handleBrowseNetworkSaveLocation}
-                    className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+                    className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                      isDark
+                        ? 'border-slate-700 text-slate-200 hover:bg-slate-800'
+                        : 'border-slate-300 text-slate-700 hover:bg-slate-100'
+                    }`}
                   >
                     Browse…
                   </button>
@@ -872,8 +879,9 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                     Local Save Location
                   </h4>
                   <p className="mt-1 text-[11px] text-slate-400">
-                    System folders and generated laser/grating files are saved here. Leave blank to
-                    use the current Windows user’s Documents folder.
+                    Test sheets are staged here before publishing to the Network Save Location.
+                    System folders and generated laser/grating files are also saved here. Leave
+                    blank to use the current Windows user’s Documents folder.
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
@@ -946,7 +954,9 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                             {loc.category}
                           </span>
                         </div>
-                        <span className="font-semibold text-xs text-white">{loc.name}</span>
+                        <span className={`font-semibold text-xs ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                          {loc.name}
+                        </span>
                         <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">
                           {loc.description}
                         </p>
@@ -972,15 +982,15 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
 
               {/* Selected Network Share Path Editor */}
               <div
-                className={`p-4 rounded-xl border space-y-3 ${
-                  isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-white border-slate-200'
+                className={`space-y-3 rounded-xl border p-4 ${
+                  isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-50 border-slate-200'
                 }`}
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Folder className="w-4 h-4 text-amber-400" />
                     <div>
-                      <h4 className="text-xs font-bold text-white">
+                      <h4 className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                         Workbook File Path:{' '}
                         <span className="text-emerald-400">{activeLocation.name}</span>
                       </h4>
@@ -1029,12 +1039,20 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                       }
                     }}
                     placeholder="Full path including workbook file name, e.g. \\\\server\\share\\Master.xlsm"
-                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-hidden focus:border-emerald-500"
+                    className={`min-w-0 flex-1 rounded-lg border px-3 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                      isDark
+                        ? 'bg-slate-900 border-slate-700 text-slate-100 placeholder-slate-500'
+                        : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'
+                    }`}
                   />
                   <button
                     type="button"
                     onClick={handleBrowseLocationFile}
-                    className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+                    className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                      isDark
+                        ? 'border-slate-700 text-slate-200 hover:bg-slate-800'
+                        : 'border-slate-300 text-slate-700 hover:bg-slate-100'
+                    }`}
                   >
                     Browse…
                   </button>
@@ -1047,7 +1065,9 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                 }`}
               >
                 <div>
-                  <h4 className="text-xs font-bold text-white">Digital Test Sheet Meter Defaults</h4>
+                  <h4 className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    Digital Test Sheet Meter Defaults
+                  </h4>
                   <p className="text-[11px] text-slate-400 mt-1">
                     These power meter serial numbers are saved on this computer and reused for Virsa and inLux test sheets.
                   </p>
@@ -1087,7 +1107,9 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                 }`}
               >
                 <div>
-                  <h4 className="text-xs font-bold text-white">Digital Test Sheet Cell Locations</h4>
+                  <h4 className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    Digital Test Sheet Cell Locations
+                  </h4>
                   <p className="text-[11px] text-slate-400 mt-1">
                     Set the destination cell for each value written to {selectedSystemFilter} workbooks. Leave a field blank to skip it.
                   </p>
@@ -1362,7 +1384,11 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                       value={newSystemInput}
                       onChange={(e) => setNewSystemInput(e.target.value)}
                       placeholder="e.g. inVia-Qontor, RA800, RA816, Virsa-R"
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-amber-500"
+                      className={`w-full rounded-lg border px-3 py-2 text-xs focus:outline-hidden focus:border-amber-500 ${
+                        isDark
+                          ? 'bg-slate-900 border-slate-700 text-slate-100 placeholder-slate-500'
+                          : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500'
+                      }`}
                     />
                   </div>
 
@@ -1375,7 +1401,11 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                       value={newSystemDesc}
                       onChange={(e) => setNewSystemDesc(e.target.value)}
                       placeholder="High-speed automated Raman biological inspection station"
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-amber-500"
+                      className={`w-full rounded-lg border px-3 py-2 text-xs focus:outline-hidden focus:border-amber-500 ${
+                        isDark
+                          ? 'bg-slate-900 border-slate-700 text-slate-100 placeholder-slate-500'
+                          : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500'
+                      }`}
                     />
                   </div>
 
@@ -1412,7 +1442,9 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                       >
                         <div className="flex items-center space-x-2">
                           <Boxes className="w-4 h-4 text-blue-400" />
-                          <span className="font-semibold text-xs text-white">{sys}</span>
+                          <span className={`font-semibold text-xs ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                            {sys}
+                          </span>
                         </div>
                         <span
                           className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${

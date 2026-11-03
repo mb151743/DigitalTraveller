@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, net, Tray, Menu, nativeImage, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, net, Tray, Menu, nativeImage, powerSaveBlocker, clipboard } = require('electron');
 const { exec, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -729,6 +729,7 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
 
     const localSystemDirectory = getSystemDirectory({
       ...request,
+      saveLocation: request?.localSaveLocation ?? request?.saveLocation,
       systemFolderPath: undefined
     });
     const systemDirectory = operation === 'publish'
@@ -1322,6 +1323,14 @@ ipcMain.handle('kill-wire-processes', () =>
 ipcMain.handle('launch-wire-uninstall', (event, registryPath) =>
   handleCleanupIpc(() => pcCleanup.launchWireUninstall(registryPath), 'Windows uninstaller started.')
 );
+
+ipcMain.handle('write-clipboard', (event, text) => {
+  if (typeof text !== 'string') {
+    throw new Error('Clipboard text must be a string.');
+  }
+  clipboard.writeText(text);
+  return true;
+});
 
 // Automatic WiRE Key fetch.
 // POSTs sn=<serial> to spd-apps using the signed-in Windows user's credentials and reads

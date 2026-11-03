@@ -118,6 +118,45 @@ html[data-color-scheme="orange"] [class~="focus:border-blue-500"]:focus {
   border-color: #bfdbfe;
 }
 
+.admin-settings-light [class*="bg-slate-950"] {
+  background-color: #f8fafc;
+}
+.admin-settings-light [class*="bg-slate-900"] {
+  background-color: #ffffff;
+}
+.admin-settings-light [class*="bg-slate-800"] {
+  background-color: #e2e8f0;
+}
+.admin-settings-light [class*="border-slate-700"],
+.admin-settings-light [class*="border-slate-800"] {
+  border-color: #cbd5e1;
+}
+.admin-settings-light [class~="text-slate-100"] {
+  color: #0f172a;
+}
+.admin-settings-light [class~="text-slate-200"] {
+  color: #1e293b;
+}
+.admin-settings-light [class~="text-slate-300"] {
+  color: #334155;
+}
+.admin-settings-light [class~="text-slate-400"],
+.admin-settings-light [class~="text-slate-500"] {
+  color: #475569;
+}
+.admin-settings-light [class~="text-blue-300"] {
+  color: #1d4ed8;
+}
+.admin-settings-light [class~="placeholder-slate-500"]::placeholder {
+  color: #64748b;
+}
+.admin-settings-light [class*="hover:bg-slate-800"]:hover {
+  background-color: #e2e8f0;
+}
+.admin-settings-light [class*="hover:text-slate-200"]:hover {
+  color: #1e293b;
+}
+
 /* Custom scrollbars matching Windows 11 Fluent aesthetic */
 ::-webkit-scrollbar {
   width: 8px;
