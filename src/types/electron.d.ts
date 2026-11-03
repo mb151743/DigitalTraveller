@@ -62,7 +62,7 @@ declare global {
         customerDataFolderNames?: string[]
       ) => Promise<SystemFolderResult>;
       createTestSheets: (
-        operation: 'prepare' | 'populate',
+        operation: 'prepare' | 'populate' | 'publish',
         system: string,
         serialNumber: string,
         partNumber: string,

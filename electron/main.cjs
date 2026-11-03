@@ -656,7 +656,7 @@ ipcMain.handle('create-system-folders', async (event, request) => {
   }
 });
 
-async function getTestSheetSystemDirectory(request) {
+async function getNetworkTestSheetSystemDirectory(request) {
   const configuredLocation = typeof request?.networkSaveLocation === 'string'
     ? request.networkSaveLocation.trim()
     : '';
@@ -719,15 +719,24 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
   let temporaryTestSheetPaths = [];
   let replacementBackups = [];
   let existingTestSheetPaths = [];
+  let localTestSheetsDirectory = '';
+  let operationOutputDirectory = '';
   try {
-    const systemDirectory = await getTestSheetSystemDirectory(request);
+    const operation = request?.operation;
+    if (!['prepare', 'populate', 'publish'].includes(operation)) {
+      return { success: false, error: 'Choose whether to copy, populate, or publish the test sheets.' };
+    }
+
+    const localSystemDirectory = getSystemDirectory({
+      ...request,
+      systemFolderPath: undefined
+    });
+    const systemDirectory = operation === 'publish'
+      ? await getNetworkTestSheetSystemDirectory(request)
+      : localSystemDirectory;
     const system = typeof request?.system === 'string'
       ? request.system.trim().toLowerCase()
       : '';
-    const operation = request?.operation;
-    if (operation !== 'prepare' && operation !== 'populate') {
-      return { success: false, error: 'Choose whether to copy or populate the test sheets.' };
-    }
     const supportedSystems = new Set(['invia', 'virsa', 'inlux']);
     if (!supportedSystems.has(system)) {
       return { success: false, error: 'Test sheet copying is only configured for inVia, Virsa, and inLux.' };
@@ -780,33 +789,44 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
       }
     ];
     const masterRecordPaths = [];
-    for (const record of configuredRecordPaths) {
-      const candidates = [
-        record.path,
-        ...record.fallbackNames.map((name) => path.join(path.dirname(record.path), name))
-      ];
-      let masterRecordPath = '';
-      for (const candidatePath of candidates) {
-        try {
-          const recordStats = await fs.promises.stat(candidatePath);
-          if (recordStats.isFile()) {
-            masterRecordPath = candidatePath;
-            break;
+    if (operation === 'prepare') {
+      for (const record of configuredRecordPaths) {
+        const candidates = [
+          record.path,
+          ...record.fallbackNames.map((name) => path.join(path.dirname(record.path), name))
+        ];
+        let masterRecordPath = '';
+        for (const candidatePath of candidates) {
+          try {
+            const recordStats = await fs.promises.stat(candidatePath);
+            if (recordStats.isFile()) {
+              masterRecordPath = candidatePath;
+              break;
+            }
+          } catch (error) {
+            if (error.code !== 'ENOENT') throw error;
           }
-        } catch (error) {
-          if (error.code !== 'ENOENT') throw error;
         }
+        if (!masterRecordPath) {
+          return {
+            success: false,
+            error: `The configured master record file was not found: ${record.path}`
+          };
+        }
+        masterRecordPaths.push(masterRecordPath);
       }
-      if (!masterRecordPath) {
-        return {
-          success: false,
-          error: `The configured master record file was not found: ${record.path}`
-        };
-      }
-      masterRecordPaths.push(masterRecordPath);
     }
 
-    const targetDirectory = path.join(systemDirectory, 'Internal data', 'Digital Test Sheets');
+    localTestSheetsDirectory = path.join(
+      localSystemDirectory,
+      'Internal data',
+      'Digital Test Sheets'
+    );
+    const localInternalDataDirectory = path.join(localSystemDirectory, 'Internal data');
+    const targetDirectory = operation === 'publish'
+      ? path.join(systemDirectory, 'Internal data', 'Digital Test Sheets')
+      : localTestSheetsDirectory;
+    operationOutputDirectory = targetDirectory;
     await fs.promises.mkdir(targetDirectory, { recursive: true });
     const targetStats = await fs.promises.stat(targetDirectory);
     if (!targetStats.isDirectory()) {
@@ -871,17 +891,60 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
       targetNames.push(`${wavelength}nm_${gratingDensity}${path.extname(masterTemplatePath)}`);
     }
 
-    testSheetTargetPaths = [...new Set(targetNames)].map(
+    const testSheetNames = [...new Set(targetNames)];
+    const localTestSheetPaths = testSheetNames.map(
+      (name) => path.join(localTestSheetsDirectory, name)
+    );
+    testSheetTargetPaths = testSheetNames.map(
       (name) => path.join(targetDirectory, name)
     );
-    const recordTargetPaths = [
-      path.join(systemDirectory, path.basename(masterRecordPaths[0])),
-      path.join(systemDirectory, path.basename(masterRecordPaths[1]))
+    const recordNames = operation === 'prepare'
+      ? masterRecordPaths.map((filePath) => path.basename(filePath))
+      : configuredRecordPaths.map((record) => path.basename(record.path));
+    if (operation === 'publish') {
+      for (const [index, record] of configuredRecordPaths.entries()) {
+        const candidates = [
+          path.join(localInternalDataDirectory, recordNames[index]),
+          ...record.fallbackNames.map((name) => path.join(localInternalDataDirectory, name))
+        ];
+        for (const candidatePath of candidates) {
+          try {
+            const candidateStats = await fs.promises.stat(candidatePath);
+            if (candidateStats.isFile()) {
+              recordNames[index] = path.basename(candidatePath);
+              break;
+            }
+          } catch (error) {
+            if (error.code !== 'ENOENT') throw error;
+          }
+        }
+      }
+    }
+    const localRecordTargetPaths = recordNames.map((name) =>
+      path.join(localInternalDataDirectory, name)
+    );
+    const networkRecordTargetPaths = [
+      path.join(systemDirectory, 'Internal data', recordNames[0]),
+      path.join(systemDirectory, 'Internal data', recordNames[1])
     ];
     const targetPaths = operation === 'prepare'
-      ? [...testSheetTargetPaths, ...recordTargetPaths]
-      : testSheetTargetPaths;
-    const masterPaths = [masterTemplatePath, ...masterRecordPaths]
+      ? [...testSheetTargetPaths, ...localRecordTargetPaths]
+      : operation === 'publish'
+        ? [...testSheetTargetPaths, ...networkRecordTargetPaths]
+        : [];
+    if (operation === 'publish') {
+      for (const localPath of [...localTestSheetPaths, ...localRecordTargetPaths]) {
+        const sourceStats = await fs.promises.stat(localPath);
+        if (!sourceStats.isFile() || sourceStats.size === 0) {
+          throw new Error(`The local file is missing or empty and cannot be published: ${localPath}`);
+        }
+      }
+    }
+    const masterPaths = [
+      masterTemplatePath,
+      ...masterRecordPaths,
+      ...configuredRecordPaths.map((record) => record.path)
+    ]
       .map((masterPath) => path.resolve(masterPath).toLowerCase());
     if (targetPaths.some((targetPath) =>
       masterPaths.includes(path.resolve(targetPath).toLowerCase())
@@ -918,7 +981,7 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
     }
 
     const conflicts = [];
-    for (const targetPath of operation === 'prepare' ? targetPaths : []) {
+    for (const targetPath of targetPaths) {
       try {
         await fs.promises.access(targetPath, fs.constants.F_OK);
         conflicts.push(targetPath);
@@ -934,24 +997,45 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
       await fs.promises.chmod(targetPath, 0o666);
     }
 
-    if (operation === 'prepare') {
+    if (operation === 'prepare' || operation === 'publish') {
       const files = [];
       for (const targetPath of targetPaths) {
         const sheetIndex = testSheetTargetPaths.indexOf(targetPath);
+        const recordTargetPaths = operation === 'prepare'
+          ? localRecordTargetPaths
+          : networkRecordTargetPaths;
         const recordIndex = recordTargetPaths.indexOf(targetPath);
-        const sourcePath = sheetIndex >= 0
-          ? masterTemplatePath
-          : masterRecordPaths[recordIndex];
+        const sourcePath = operation === 'prepare'
+          ? sheetIndex >= 0 ? masterTemplatePath : masterRecordPaths[recordIndex]
+          : sheetIndex >= 0
+            ? localTestSheetPaths[sheetIndex]
+            : localRecordTargetPaths[recordIndex];
+        if (operation === 'publish') {
+          const sourceStats = await fs.promises.stat(sourcePath);
+          if (!sourceStats.isFile() || sourceStats.size === 0) {
+            throw new Error(`The local file is missing or empty and cannot be published: ${sourcePath}`);
+          }
+        }
         await fs.promises.copyFile(
           sourcePath,
           targetPath,
           request.overwrite === true ? 0 : fs.constants.COPYFILE_EXCL
         );
+        const copiedStats = await fs.promises.stat(targetPath);
+        if (!copiedStats.isFile() || copiedStats.size === 0) {
+          throw new Error(`The copied workbook is missing or empty: ${targetPath}`);
+        }
         await fs.promises.chmod(targetPath, 0o666);
         files.push(targetPath);
         if (sheetIndex >= 0) copiedTestSheetPaths.push(targetPath);
       }
-      return { success: true, files, testSheetFiles: testSheetTargetPaths };
+      return {
+        success: true,
+        files,
+        testSheetFiles: testSheetTargetPaths,
+        outputDirectory: targetDirectory,
+        localDirectory: localTestSheetsDirectory
+      };
     }
 
     const stagedPaths = [];
@@ -1051,7 +1135,8 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
     return {
       success: true,
       files: verifiedFiles,
-      outputDirectory: targetDirectory
+      outputDirectory: targetDirectory,
+      localDirectory: localTestSheetsDirectory
     };
   } catch (err) {
     console.error('Failed to create test sheets:', err);
@@ -1085,14 +1170,22 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
     }
     return {
       success: false,
-      error: `Could not ${request?.operation === 'populate' ? 'populate' : 'create'} test sheets: ${err.message}${cleanupErrors.length ? ` Temporary files could not be removed: ${cleanupErrors.join('; ')}` : ''}`,
+      error: `Could not ${
+        request?.operation === 'populate'
+          ? 'populate'
+          : request?.operation === 'publish'
+            ? 'publish'
+            : 'create'
+      } test sheets: ${err.message}${cleanupErrors.length ? ` Temporary files could not be removed: ${cleanupErrors.join('; ')}` : ''}`,
       ...(testSheetTargetPaths.length > 0
         ? {
             files: existingTestSheetPaths.length > 0
               ? existingTestSheetPaths
               : request?.operation === 'prepare' ? copiedTestSheetPaths : []
           }
-        : {})
+        : {}),
+      ...(operationOutputDirectory ? { outputDirectory: operationOutputDirectory } : {}),
+      ...(localTestSheetsDirectory ? { localDirectory: localTestSheetsDirectory } : {})
     };
   }
 });

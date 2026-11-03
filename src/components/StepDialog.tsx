@@ -115,7 +115,7 @@ interface StepDialogProps {
   onSaveMotorScanResults: (entries: MotorScanEntry[]) => Promise<MotorScanSaveResult>;
   system: string;
   onCreateTestSheets: (
-    operation: 'prepare' | 'populate',
+    operation: 'prepare' | 'populate' | 'publish',
     overwrite: boolean,
     testSheetMetadata?: DigitalTestSheetMetadata
   ) => Promise<TestSheetResult>;
@@ -191,6 +191,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   const isSystemFoldersStep = step.name === SYSTEM_FOLDERS_STEP_NAME;
   const isCreateTestSheetsStep = step.name === CREATE_TEST_SHEETS_STEP_NAME;
   const hasPreparedTestSheets = notes.includes('Blank test sheets copied:');
+  const hasPopulatedTestSheets = notes.includes('Test sheets populated locally:');
   const isPreSystemTestStep = step.name === PRE_SYSTEM_TEST_STEP_NAME;
   const isUpdateNetworkSaveLocationStep =
     step.name === UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME;
@@ -503,9 +504,9 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
       const report = [
         'Blank test sheets copied:',
         ...sheetFiles.map((file) => `- ${file.split(/[\\/]/).pop()}`),
-        `Output folder: ${result.outputDirectory || 'See the configured Network Save Location.'}`,
+        `Local staging folder: ${result.localDirectory || result.outputDirectory || 'See the configured Local Save Location.'}`,
         '',
-        'Blank copies are editable. Run Part 2 to populate their cells.'
+        'Blank copies are editable. Run Part 2 to populate their cells, then Part 3 to publish them to the network.'
       ].join('\n');
       setNotes(report);
       onUpdateStatus(step.id, 'In Progress', report, signoffTechnician);
@@ -519,26 +520,15 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
     }
   };
 
-  const createTestSheetsAndComplete = async (
+  const populateTestSheetsLocally = async (
     metadata?: DigitalTestSheetMetadata
   ): Promise<boolean> => {
     setIsCreatingTestSheets(true);
     try {
       let result = await onCreateTestSheets('populate', false, metadata);
-      if (!result.success && 'conflicts' in result) {
-        const conflicts = result.conflicts.map((file) => `• ${file}`).join('\n');
-        const shouldOverwrite = window.confirm(
-          `These test sheets already exist:\n\n${conflicts}\n\nReplace the existing files?`
-        );
-        if (!shouldOverwrite) {
-          setCompletionError('Test sheet population cancelled. Existing files were not changed.');
-          return false;
-        }
-        result = await onCreateTestSheets('populate', true, metadata);
-      }
       if (!result.success) {
         const remainingFiles = 'files' in result && result.files?.length
-          ? `\n\n${result.files.length} workbook(s) remain available for editing in:\n${result.outputDirectory || result.files[0].replace(/[\\/][^\\/]*$/, '')}`
+          ? `\n\n${result.files.length} workbook(s) remain available for editing locally in:\n${result.localDirectory || result.outputDirectory || result.files[0].replace(/[\\/][^\\/]*$/, '')}`
           : '';
         setCompletionError(
           'error' in result
@@ -550,19 +540,71 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
       setCompletionError(null);
       setIsTestSheetDataPromptOpen(false);
       const report = [
-        'Test sheets populated:',
+        'Blank test sheets copied:',
+        'Test sheets populated locally:',
         ...result.files.map((file) => `- ${file.split(/[\\/]/).pop()}`),
-        `Output folder: ${result.outputDirectory || 'See the configured Network Save Location.'}`
+        `Local staging folder: ${result.localDirectory || result.outputDirectory || 'See the configured Local Save Location.'}`,
+        '',
+        'Review the workbooks, then run Part 3 to copy them to the network.'
       ].join('\n');
       setNotes(report);
-      onUpdateStatus(step.id, 'Complete', report, signoffTechnician);
-      onClose();
+      onUpdateStatus(step.id, 'In Progress', report, signoffTechnician);
       return true;
     } catch (error) {
       setCompletionError(
         error instanceof Error ? error.message : 'Could not create test sheets.'
       );
       return false;
+    } finally {
+      setIsCreatingTestSheets(false);
+    }
+  };
+
+  const publishTestSheets = async (): Promise<void> => {
+    if (!hasPopulatedTestSheets) {
+      setCompletionError('Complete Part 2 and populate the local test sheets before publishing them.');
+      return;
+    }
+
+    setIsCreatingTestSheets(true);
+    setCompletionError(null);
+    try {
+      let result = await onCreateTestSheets('publish', false);
+      if (!result.success && 'conflicts' in result) {
+        const conflicts = result.conflicts.map((file) => `• ${file}`).join('\n');
+        const shouldOverwrite = window.confirm(
+          `These files already exist on the network:\n\n${conflicts}\n\nReplace them with the locally staged files?`
+        );
+        if (!shouldOverwrite) {
+          setCompletionError('Publishing cancelled. Existing network files were not changed.');
+          return;
+        }
+        result = await onCreateTestSheets('publish', true);
+      }
+      if (!result.success) {
+        setCompletionError(
+          'error' in result
+            ? `${result.error}${result.localDirectory ? `\n\nThe local staged files are retained in:\n${result.localDirectory}` : ''}`
+            : `These files still exist and were not replaced:\n${result.conflicts.join('\n')}`
+        );
+        return;
+      }
+
+      const sheetFiles = result.testSheetFiles || result.files;
+      const report = [
+        'Test sheets published to network:',
+        ...sheetFiles.map((file) => `- ${file.split(/[\\/]/).pop()}`),
+        `Network folder: ${result.outputDirectory || 'See the configured Network Save Location.'}`,
+        `Local copies retained in: ${result.localDirectory || 'the local staging folder'}`
+      ].join('\n');
+      setNotes(report);
+      onUpdateStatus(step.id, 'Complete', report, signoffTechnician);
+      setCompletionError(null);
+      onClose();
+    } catch (error) {
+      setCompletionError(
+        error instanceof Error ? error.message : 'Could not publish the test sheets to the network.'
+      );
     } finally {
       setIsCreatingTestSheets(false);
     }
@@ -592,10 +634,10 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
         setIsTestSheetDataPromptOpen(true);
         return;
       }
-      await createTestSheetsAndComplete(metadata);
+      await populateTestSheetsLocally(metadata);
       return;
     }
-    await createTestSheetsAndComplete();
+    await populateTestSheetsLocally();
   };
 
   const handleSubmitTestSheetMetadata = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -625,7 +667,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
     }
 
     setTestSheetMetadata(metadata);
-    await createTestSheetsAndComplete(metadata);
+    await populateTestSheetsLocally(metadata);
   };
 
   const handleTestSheetMetadataChange = (
@@ -637,6 +679,10 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   };
 
   const handleMarkComplete = async () => {
+    if (isCreateTestSheetsStep) {
+      setCompletionError('Complete Parts 1–3 and publish the test sheets to the network before completing this step.');
+      return;
+    }
     if (isUpdateNetworkSaveLocationStep) {
       await handleUpdateNetworkSaveLocation();
       return;
@@ -1000,8 +1046,9 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
           {isCreateTestSheetsStep && (
             <section className="space-y-3 rounded-lg border border-blue-800/70 bg-blue-950/30 p-4">
               <p className="text-xs text-slate-300">
-                Create one editable workbook per laser/grating combination in the network system
-                folder&apos;s <span className="font-mono">Internal data\Digital Test Sheets</span>.
+                Work locally first: copy one editable workbook per laser/grating combination to
+                the local system folder, populate it, then publish the finished workbooks to the
+                network system folder&apos;s <span className="font-mono">Internal data\Digital Test Sheets</span>.
                 The filenames use the format <span className="font-mono">532nm_1200</span>.
               </p>
               <div className="flex flex-wrap gap-2">
@@ -1021,10 +1068,18 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
                 >
                   {isCreatingTestSheets ? 'Populating test sheets…' : 'Part 2: Populate Test Sheets'}
                 </button>
+                <button
+                  type="button"
+                  onClick={publishTestSheets}
+                  disabled={isCreatingTestSheets || !hasPopulatedTestSheets}
+                  className="rounded-lg border border-blue-400/60 bg-blue-700/70 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isCreatingTestSheets ? 'Publishing test sheets…' : 'Part 3: Publish to Network'}
+                </button>
               </div>
               {hasPreparedTestSheets && (
                 <p className="text-[11px] text-emerald-300">
-                  Part 1 is complete. These blank copies remain available even if Part 2 fails.
+                  Local copies are kept even if population or network publishing fails.
                 </p>
               )}
             </section>
