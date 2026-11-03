@@ -31,7 +31,7 @@ import { DigitalTestSheetSettings } from '../services/digitalTestSheetSettingsSe
 import { 
   X, CheckCircle, Clock, RotateCcw, AlertTriangle, FileText,
   CheckSquare, Square, Check, UserCheck, User, KeyRound, Briefcase, Tag, Hash,
-  Plus, Trash2, Save, ScanLine, FolderOpen
+  Plus, Trash2, Save, ScanLine, FolderOpen, Copy
 } from 'lucide-react';
 
 function normalizeTestSheetMetadata(
@@ -161,6 +161,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
 }) => {
   const [notes, setNotes] = useState(step.notes || '');
   const [completionError, setCompletionError] = useState<string | null>(null);
+  const [copiedError, setCopiedError] = useState(false);
   const [isCreatingSystemFolders, setIsCreatingSystemFolders] = useState(false);
   const [isCreatingTestSheets, setIsCreatingTestSheets] = useState(false);
   const [isUpdatingNetworkLocation, setIsUpdatingNetworkLocation] = useState(false);
@@ -193,6 +194,21 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   const isPreSystemTestStep = step.name === PRE_SYSTEM_TEST_STEP_NAME;
   const isUpdateNetworkSaveLocationStep =
     step.name === UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME;
+
+  const handleCopyError = async () => {
+    if (!completionError) return;
+    try {
+      await navigator.clipboard.writeText(completionError);
+      setCopiedError(true);
+      window.setTimeout(() => setCopiedError(false), 2000);
+    } catch (error) {
+      setCompletionError(
+        `${completionError}\n\nCould not copy the error: ${
+          error instanceof Error ? error.message : 'Clipboard access was denied.'
+        }`
+      );
+    }
+  };
 
   // Local state for inline system details inputs on the Setup procedure page
   const [localSerial, setLocalSerial] = useState(serialNumber || '');
@@ -1117,10 +1133,28 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
           )}
 
           {completionError && (
-            <p className="flex items-center gap-2 text-xs text-amber-300">
-              <AlertTriangle className="h-4 w-4" />
-              {completionError}
-            </p>
+            <div
+              role="alert"
+              className="max-h-40 overflow-auto rounded-lg border border-rose-700/80 bg-rose-950/80 p-3 text-xs text-rose-100"
+            >
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="flex items-center gap-2 font-semibold text-rose-200">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                  Could not complete this action
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCopyError}
+                  className="inline-flex flex-shrink-0 items-center gap-1.5 rounded border border-rose-500/60 px-2 py-1 text-[11px] font-medium text-rose-100 hover:bg-rose-900"
+                >
+                  {copiedError ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copiedError ? 'Copied' : 'Copy error'}
+                </button>
+              </div>
+              <pre className="whitespace-pre-wrap break-words font-sans leading-relaxed">
+                {completionError}
+              </pre>
+            </div>
           )}
 
           {/* Verification Checklist */}
@@ -1335,10 +1369,28 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
               ))}
             </div>
             {completionError && (
-              <p role="alert" className="mt-3 flex items-center gap-2 text-xs text-amber-300">
-                <AlertTriangle className="h-4 w-4" />
-                {completionError}
-              </p>
+              <div
+                role="alert"
+                className="mt-3 max-h-40 overflow-auto rounded-lg border border-rose-700/80 bg-rose-950/80 p-3 text-xs text-rose-100"
+              >
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-2 font-semibold text-rose-200">
+                    <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                    Could not complete this action
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopyError}
+                    className="inline-flex flex-shrink-0 items-center gap-1.5 rounded border border-rose-500/60 px-2 py-1 text-[11px] font-medium text-rose-100 hover:bg-rose-900"
+                  >
+                    {copiedError ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    {copiedError ? 'Copied' : 'Copy error'}
+                  </button>
+                </div>
+                <pre className="whitespace-pre-wrap break-words font-sans leading-relaxed">
+                  {completionError}
+                </pre>
+              </div>
             )}
             <div className="mt-5 flex justify-end gap-2">
               <button

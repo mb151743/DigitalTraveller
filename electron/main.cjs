@@ -6,6 +6,12 @@ const { promisify } = require('util');
 const pcCleanup = require('./pcCleanup.cjs');
 const execFileAsync = promisify(execFile);
 
+function getPopulateTestSheetScriptPath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'electron', 'populateDigitalTestSheet.ps1')
+    : path.join(__dirname, 'populateDigitalTestSheet.ps1');
+}
+
 // Send the signed-in Windows user's credentials (NTLM/Kerberos) to spd-apps automatically.
 // Both spellings are set because Chromium renamed this switch across versions.
 app.commandLine.appendSwitch('auth-server-allowlist', 'spd-apps');
@@ -968,24 +974,33 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
       await fs.promises.copyFile(targetPath, stagedPath, fs.constants.COPYFILE_EXCL);
       temporaryTestSheetPaths.push(stagedPath);
       await fs.promises.chmod(stagedPath, 0o666);
+      const populationScriptPath = getPopulateTestSheetScriptPath();
+      await fs.promises.access(populationScriptPath, fs.constants.R_OK);
       if (system === 'invia' || system === 'virsa' || system === 'inlux') {
-        await execFileAsync('powershell.exe', [
-          '-NoProfile',
-          '-NonInteractive',
-          '-ExecutionPolicy',
-          'Bypass',
-          '-File',
-          path.join(__dirname, 'populateDigitalTestSheet.ps1'),
-          system === 'inlux' ? 'inLux' : system === 'invia' ? 'InVia' : 'Virsa',
-          stagedPath,
-          (testSheetMetadata.jobNumber || request.jobNumber || '').trim(),
-          (testSheetMetadata.customerName || request.customerName || '').trim(),
-          (testSheetMetadata.partNumber || '').trim(),
-          (testSheetMetadata.serialNumber || request.serialNumber || '').trim(),
-          (testSheetMetadata.powerMeterSerialNumber || '').trim(),
-          (testSheetMetadata.powerMeterHeadSerialNumber || '').trim(),
-          JSON.stringify(cellMappings)
-        ]);
+        try {
+          await execFileAsync('powershell.exe', [
+            '-NoProfile',
+            '-NonInteractive',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            populationScriptPath,
+            system === 'inlux' ? 'inLux' : system === 'invia' ? 'InVia' : 'Virsa',
+            stagedPath,
+            (testSheetMetadata.jobNumber || request.jobNumber || '').trim(),
+            (testSheetMetadata.customerName || request.customerName || '').trim(),
+            (testSheetMetadata.partNumber || '').trim(),
+            (testSheetMetadata.serialNumber || request.serialNumber || '').trim(),
+            (testSheetMetadata.powerMeterSerialNumber || '').trim(),
+            (testSheetMetadata.powerMeterHeadSerialNumber || '').trim(),
+            JSON.stringify(cellMappings)
+          ]);
+        } catch (error) {
+          const output = String(error.stderr || error.stdout || error.message || 'Unknown PowerShell error')
+            .trim()
+            .slice(0, 2500);
+          throw new Error(`PowerShell could not populate ${path.basename(targetPath)}: ${output}`);
+        }
       }
       stagedPaths.push(stagedPath);
     }

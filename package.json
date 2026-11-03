@@ -35,6 +35,9 @@
   "build": {
     "appId": "com.digitaltraveller.app",
     "productName": "Digital Traveller",
+    "asarUnpack": [
+      "electron/populateDigitalTestSheet.ps1"
+    ],
     "directories": {
       "output": "release"
     },
