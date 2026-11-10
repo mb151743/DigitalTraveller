@@ -410,7 +410,6 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
         return;
       }
 
-      onNetworkSystemFolderUpdated(result.directory);
       setNetworkSystemFolder(result.directory);
       setNetworkFolderNames(result.folderNames);
       const importedCombinations = networkFolderSearch.customerDataFolderNames
@@ -441,6 +440,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
       ].join('\n');
       setNotes(report);
       onUpdateStatus(step.id, 'Complete', report, signoffTechnician);
+      onNetworkSystemFolderUpdated(result.directory);
       onClose();
     } catch (error) {
       setCompletionError(
