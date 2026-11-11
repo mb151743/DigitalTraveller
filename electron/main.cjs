@@ -1256,6 +1256,125 @@ ipcMain.handle('create-test-sheets', async (event, request) => {
   }
 });
 
+ipcMain.handle('remove-local-test-sheet-copies', async (event, request) => {
+  const removedFiles = [];
+  try {
+    const system = typeof request?.system === 'string'
+      ? request.system.trim().toLowerCase()
+      : '';
+    if (!['invia', 'virsa', 'inlux'].includes(system)) {
+      throw new Error('Local test sheet cleanup is only configured for inVia, Virsa, and inLux.');
+    }
+
+    const localSystemDirectory = getSystemDirectory({
+      serialNumber: request?.serialNumber,
+      partNumber: request?.partNumber,
+      customerName: request?.customerName,
+      saveLocation: request?.localSaveLocation,
+      systemFolderPath: undefined
+    });
+    const masterTemplatePath = typeof request?.masterTemplatePath === 'string'
+      ? request.masterTemplatePath.trim()
+      : '';
+    if (!masterTemplatePath || !path.isAbsolute(masterTemplatePath)) {
+      throw new Error('Configure an absolute master test sheet path in Settings.');
+    }
+    if (!Array.isArray(request?.fileNames) || request.fileNames.length === 0) {
+      throw new Error('The published file list is missing. Republish the test sheets before removing local copies.');
+    }
+
+    const systemRecordPrefix = system === 'inlux' ? 'inLux' : system === 'invia' ? 'InVia' : 'VIRSA';
+    const configuredRecords = [
+      {
+        configuredPath: request?.minorDeviationLogPath,
+        fallbackNames: [
+          'Minor Deviation Record.xlsm',
+          `${systemRecordPrefix} Minor Deviation Record.xlsm`,
+          `${systemRecordPrefix} Minor Deviation Log.xlsm`
+        ]
+      },
+      {
+        configuredPath: request?.testAcceptanceRecordPath,
+        fallbackNames: [`${systemRecordPrefix} Test Acceptance Record.xlsm`]
+      }
+    ];
+    const localTestSheetsDirectory = path.join(
+      localSystemDirectory,
+      'Internal data',
+      'Digital Test Sheets'
+    );
+    const localInternalDataDirectory = path.join(localSystemDirectory, 'Internal data');
+    const targets = [];
+    const masterExtension = path.extname(masterTemplatePath);
+    const allowedRecordNames = new Set();
+
+    for (const record of configuredRecords) {
+      if (typeof record.configuredPath !== 'string' || !path.isAbsolute(record.configuredPath.trim())) {
+        throw new Error('Configure absolute paths for the Test Acceptance Record and Minor Deviation Log files in Settings.');
+      }
+      const recordNames = [
+        path.basename(record.configuredPath.trim()),
+        ...record.fallbackNames
+      ];
+      recordNames.forEach((name) => allowedRecordNames.add(name.toLowerCase()));
+    }
+
+    for (const fileName of request.fileNames) {
+      if (
+        typeof fileName !== 'string' ||
+        !fileName ||
+        fileName !== path.basename(fileName) ||
+        fileName === '.' ||
+        fileName === '..'
+      ) {
+        throw new Error('The published file list contains an invalid file name.');
+      }
+      if (allowedRecordNames.has(fileName.toLowerCase())) {
+        targets.push(path.join(localInternalDataDirectory, fileName));
+        continue;
+      }
+      const extensionMatches = masterExtension &&
+        fileName.toLowerCase().endsWith(masterExtension.toLowerCase());
+      const sheetName = extensionMatches
+        ? fileName.slice(0, -masterExtension.length)
+        : '';
+      if (!/^\d+(?:\.\d+)?nm_\d+$/i.test(sheetName)) {
+        throw new Error(`The published file name is not a test sheet or configured record: ${fileName}`);
+      }
+      targets.push(path.join(localTestSheetsDirectory, fileName));
+    }
+
+    const uniqueTargets = [...new Set(targets)];
+    const missingFiles = [];
+    for (const targetPath of uniqueTargets) {
+      let stats;
+      try {
+        stats = await fs.promises.lstat(targetPath);
+      } catch (error) {
+        if (error.code === 'ENOENT') {
+          missingFiles.push(path.basename(targetPath));
+          continue;
+        }
+        throw error;
+      }
+      if (stats.isSymbolicLink() || !stats.isFile()) {
+        throw new Error(`Refusing to remove a non-regular local copy: ${targetPath}`);
+      }
+      await fs.promises.unlink(targetPath);
+      removedFiles.push(path.basename(targetPath));
+    }
+
+    return { success: true, removedFiles, missingFiles };
+  } catch (error) {
+    console.error('Failed to remove local test sheet copies:', error);
+    return {
+      success: false,
+      error: `Could not remove local test sheet copies: ${error.message}`,
+      ...(removedFiles.length > 0 ? { removedFiles } : {})
+    };
+  }
+});
+
 ipcMain.handle('create-laser-grating-files', async (event, request) => {
   try {
     const systemDirectory = getSystemDirectory(request);

@@ -9,6 +9,7 @@ import {
   StepStatus,
   SystemFolderResult,
   TestSheetResult,
+  LocalTestSheetCleanupResult,
   DigitalTestSheetMetadata,
   MotorScanEntry,
   MotorScanSaveResult,
@@ -310,7 +311,13 @@ export const App: React.FC = () => {
       technician || traveller.operatorName,
       notes
     );
-    setTraveller(updated);
+    setTraveller((current) => WorkflowService.updateStepStatus(
+      current,
+      stepId,
+      status,
+      technician || current.operatorName,
+      notes
+    ));
 
     // Auto-select the next task in the active stage list when marked Complete
     if (status === 'Complete') {
@@ -873,7 +880,8 @@ export const App: React.FC = () => {
         const testSheetsStep: WorkflowStep = existingIndex >= 0
           ? {
               ...normalizedSteps.splice(existingIndex, 1)[0],
-              stage: testSheetStage
+              stage: testSheetStage,
+              instructions: [...CREATE_TEST_SHEETS_STEP_INSTRUCTIONS]
             }
           : {
               id: `step-${traveller.system}-create-test-sheets-${Date.now().toString(36)}`,
@@ -940,8 +948,7 @@ export const App: React.FC = () => {
       traveller.customerName || '',
       StorageService.getSaveLocation(),
       traveller.laserGratingCombinations || [],
-      overwrite,
-      traveller.networkSystemFolderPath
+      overwrite
     );
     if (result.success) {
       const directory = result.files[0]?.replace(/[\\/][^\\/]*$/, '') || '';
@@ -974,18 +981,12 @@ export const App: React.FC = () => {
           .map((line) => line.slice(2))
           .filter((name) => name && name !== '(none)')
       : [];
-    if (customerDataFolderNames.length > 0 && !traveller.networkSystemFolderPath) {
-      return {
-        success: false,
-        error: 'Complete Update Network Save Location before creating the discovered Customer data folders.'
-      };
-    }
     const result = await createFolders(
       traveller.serialNumber,
       traveller.partNumber || '',
       traveller.customerName || '',
       StorageService.getSaveLocation(),
-      traveller.networkSystemFolderPath,
+      undefined,
       customerDataFolderNames
     );
     if (result.success) {
@@ -1129,6 +1130,44 @@ export const App: React.FC = () => {
     }
     return result;
   };
+
+  const handleRemoveLocalTestSheetCopies =
+    async (fileNames: string[]): Promise<LocalTestSheetCleanupResult> => {
+      const removeCopies = window.desktopAPI?.removeLocalTestSheetCopies;
+      if (!removeCopies) {
+        return {
+          success: false,
+          error: 'Removing local test sheet copies is available in the Windows desktop app only.'
+        };
+      }
+
+      const locations = NetworkShareConfigService.getLocationsForSystem(traveller.system);
+      const masterSheet = locations.find((location) => location.category === 'Master Sheet');
+      const testAcceptanceRecord = locations.find(
+        (location) => location.category === 'Test Acceptance Record'
+      );
+      const minorDeviationLog = locations.find(
+        (location) => location.category === 'Minor Deviation Log'
+      );
+      if (!masterSheet?.path.trim() || !testAcceptanceRecord?.path.trim() || !minorDeviationLog?.path.trim()) {
+        return {
+          success: false,
+          error: `Configure the ${traveller.system} master sheet, Test Acceptance Record, and Minor Deviation Log paths in Settings.`
+        };
+      }
+
+      return removeCopies(
+        traveller.system,
+        traveller.serialNumber,
+        traveller.partNumber || '',
+        traveller.customerName || '',
+        StorageService.getSaveLocation(),
+        masterSheet.path,
+        testAcceptanceRecord.path,
+        minorDeviationLog.path,
+        fileNames
+      );
+    };
   return (
     <WindowFrame
       system={traveller.system}
@@ -1275,6 +1314,7 @@ export const App: React.FC = () => {
         onSaveMotorScanResults={handleSaveMotorScanResults}
         system={traveller.system}
         onCreateTestSheets={handleCreateTestSheets}
+        onRemoveLocalTestSheetCopies={handleRemoveLocalTestSheetCopies}
         digitalTestSheetSettings={DigitalTestSheetSettingsService.get()}
         onSaveDigitalTestSheetSettings={DigitalTestSheetSettingsService.save}
       />

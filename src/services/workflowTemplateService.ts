@@ -18,6 +18,7 @@ import {
   LEGACY_SYSTEM_UNBOXING_STEP_NAME,
   SYSTEM_FOLDERS_STEP_NAME,
   SYSTEM_FOLDERS_STEP_INSTRUCTIONS,
+  OBSOLETE_SETUP_STEP_NAMES,
   UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME,
   UPDATE_NETWORK_SAVE_LOCATION_STEP_INSTRUCTIONS,
   PAT_TEST_STEP_INSTRUCTIONS,
@@ -123,7 +124,11 @@ function ensureTestSheetsStepAfterSelection(
   const orderedSteps = [...steps];
   const existingIndex = orderedSteps.findIndex((step) => step.name === CREATE_TEST_SHEETS_STEP_NAME);
   const testSheetsStep = existingIndex >= 0
-    ? { ...orderedSteps.splice(existingIndex, 1)[0], stage: 'Calibration' }
+    ? {
+        ...orderedSteps.splice(existingIndex, 1)[0],
+        stage: 'Calibration',
+        instructions: [...CREATE_TEST_SHEETS_STEP_INSTRUCTIONS]
+      }
     : {
         name: CREATE_TEST_SHEETS_STEP_NAME,
         stage: 'Calibration',
@@ -218,6 +223,8 @@ function normalizeInViaVirsaTemplateSteps(
       stage: 'Set Up',
       ...(name === SYSTEM_FOLDERS_STEP_NAME
         ? { instructions: [...SYSTEM_FOLDERS_STEP_INSTRUCTIONS] }
+        : name === CREATE_TEST_SHEETS_STEP_NAME
+          ? { instructions: [...CREATE_TEST_SHEETS_STEP_INSTRUCTIONS] }
         : {})
     };
   });
@@ -309,7 +316,12 @@ export class WorkflowTemplateService {
                   measuredData: []
                 }
               : {})
-          }));
+          })).filter((step) =>
+            !(
+              step.stage === 'Set Up' &&
+              OBSOLETE_SETUP_STEP_NAMES.some((name) => step.name === name)
+            )
+          );
 
           const isInViaOrVirsa = normalizedSystem === 'inVia' || normalizedSystem === 'Virsa';
           const normalizedSteps = isInViaOrVirsa

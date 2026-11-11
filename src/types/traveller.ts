@@ -51,6 +51,10 @@ export type TestSheetResult =
       recordDirectory?: string;
     };
 
+export type LocalTestSheetCleanupResult =
+  | { success: true; removedFiles: string[]; missingFiles: string[] }
+  | { success: false; error: string; removedFiles?: string[] };
+
 export interface DigitalTestSheetMetadata {
   jobNumber: string;
   customerName: string;

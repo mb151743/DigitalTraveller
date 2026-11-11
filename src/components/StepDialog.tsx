@@ -4,6 +4,7 @@ import {
   LaserGratingFileResult,
   SystemFolderResult,
   TestSheetResult,
+  LocalTestSheetCleanupResult,
   DigitalTestSheetMetadata,
   MotorScanEntry,
   MotorScanSaveResult,
@@ -120,6 +121,7 @@ interface StepDialogProps {
     testSheetMetadata?: DigitalTestSheetMetadata,
     technicianName?: string
   ) => Promise<TestSheetResult>;
+  onRemoveLocalTestSheetCopies: (fileNames: string[]) => Promise<LocalTestSheetCleanupResult>;
   digitalTestSheetSettings: DigitalTestSheetSettings;
   onSaveDigitalTestSheetSettings: (
     settings: Pick<DigitalTestSheetSettings, 'powerMeterSerialNumber' | 'powerMeterHeadSerialNumber'>
@@ -157,6 +159,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   onSaveMotorScanResults,
   system,
   onCreateTestSheets,
+  onRemoveLocalTestSheetCopies,
   digitalTestSheetSettings,
   onSaveDigitalTestSheetSettings
 }) => {
@@ -193,6 +196,8 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
   const isCreateTestSheetsStep = step.name === CREATE_TEST_SHEETS_STEP_NAME;
   const hasPreparedTestSheets = notes.includes('Blank test sheets copied:');
   const hasPopulatedTestSheets = notes.includes('Test workbooks populated locally:');
+  const hasPublishedTestSheets = notes.includes('Test sheets published to network:');
+  const hasRemovedLocalTestSheets = notes.includes('Local copies removed:');
   const isPreSystemTestStep = step.name === PRE_SYSTEM_TEST_STEP_NAME;
   const isUpdateNetworkSaveLocationStep =
     step.name === UPDATE_NETWORK_SAVE_LOCATION_STEP_NAME;
@@ -612,12 +617,68 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
         `Local copies retained in: ${result.localDirectory || 'the local staging folder'}`
       ].join('\n');
       setNotes(report);
-      onUpdateStatus(step.id, 'Complete', report, signoffTechnician);
+      onUpdateStatus(step.id, 'In Progress', report, signoffTechnician);
       setCompletionError(null);
-      onClose();
     } catch (error) {
       setCompletionError(
         error instanceof Error ? error.message : 'Could not publish the test sheets to the network.'
+      );
+    } finally {
+      setIsCreatingTestSheets(false);
+    }
+  };
+
+  const removeLocalTestSheetCopies = async (): Promise<void> => {
+    if (!hasPublishedTestSheets) {
+      setCompletionError('Publish the test sheets to the network in Part 3 before removing local copies.');
+      return;
+    }
+    if (hasRemovedLocalTestSheets) return;
+    if (!window.confirm('Remove the local test sheet and record copies that were published to the network?')) {
+      return;
+    }
+    const publishedFilesStart = notes.indexOf('Test sheets published to network:');
+    const publishedFileNames = publishedFilesStart < 0
+      ? []
+      : notes
+          .slice(publishedFilesStart + 'Test sheets published to network:'.length)
+          .split(/\r?\n/)
+          .filter((line) => line.trim().startsWith('- '))
+          .map((line) => line.trim().slice(2));
+    if (publishedFileNames.length === 0) {
+      setCompletionError('The published file list is missing from this step. Republish the test sheets before removing local copies.');
+      return;
+    }
+
+    setIsCreatingTestSheets(true);
+    setCompletionError(null);
+    try {
+      const result = await onRemoveLocalTestSheetCopies(publishedFileNames);
+      if (!result.success) {
+        const partialRemoval = result.removedFiles?.length
+          ? `\n\nAlready removed:\n${result.removedFiles.map((file) => `- ${file}`).join('\n')}`
+          : '';
+        setCompletionError(`${result.error}${partialRemoval}`);
+        return;
+      }
+
+      const report = [
+        notes.trim(),
+        '',
+        'Local copies removed:',
+        ...(result.removedFiles.length > 0
+          ? result.removedFiles.map((file) => `- ${file}`)
+          : ['- No local copies remained.']),
+        ...(result.missingFiles.length > 0
+          ? ['', 'Local copies not found:', ...result.missingFiles.map((file) => `- ${file}`)]
+          : [])
+      ].join('\n');
+      setNotes(report);
+      onUpdateStatus(step.id, 'Complete', report, signoffTechnician);
+      onClose();
+    } catch (error) {
+      setCompletionError(
+        error instanceof Error ? error.message : 'Could not remove the local test sheet copies.'
       );
     } finally {
       setIsCreatingTestSheets(false);
@@ -694,7 +755,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
 
   const handleMarkComplete = async () => {
     if (isCreateTestSheetsStep) {
-      setCompletionError('Complete Parts 1–3 and publish the test sheets to the network before completing this step.');
+      setCompletionError('Complete Parts 1–4 and publish the test sheets to the network before completing this step.');
       return;
     }
     if (isUpdateNetworkSaveLocationStep) {
@@ -1065,7 +1126,7 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
                 Work locally first: Part 1 copies the record templates and one editable digital
                 test workbook per laser/grating combination. Part 2 fills in all three workbook
                 types; Part 3 publishes the two records to <span className="font-mono">Internal data</span>
-                and digital test sheets to <span className="font-mono">Internal data\Digital Test Sheets</span>.
+                and digital test sheets to the network. Part 4 removes the local copies after publishing.
                 Digital test sheet filenames use the format <span className="font-mono">532nm_1200</span>.
               </p>
               <div className="flex flex-wrap gap-2">
@@ -1093,10 +1154,22 @@ const StepDialogContent: React.FC<StepDialogProps & { step: WorkflowStep }> = ({
                 >
                   {isCreatingTestSheets ? 'Publishing test sheets…' : 'Part 3: Publish to Network'}
                 </button>
+                <button
+                  type="button"
+                  onClick={removeLocalTestSheetCopies}
+                  disabled={isCreatingTestSheets || !hasPublishedTestSheets || hasRemovedLocalTestSheets}
+                  className="rounded-lg border border-rose-500/60 bg-rose-950/70 px-4 py-2 text-xs font-semibold text-rose-100 hover:bg-rose-900 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isCreatingTestSheets
+                    ? 'Removing local copies…'
+                    : hasRemovedLocalTestSheets
+                      ? 'Part 4: Local Copies Removed'
+                      : 'Part 4: Remove Local Copies'}
+                </button>
               </div>
               {hasPreparedTestSheets && (
                 <p className="text-[11px] text-emerald-300">
-                  Local copies are kept even if population or network publishing fails.
+                  Local copies are kept if population or network publishing fails.
                 </p>
               )}
             </section>

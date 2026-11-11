@@ -63,6 +63,27 @@ contextBridge.exposeInMainWorld('desktopAPI', {
     technicianName,
     recordCellMappings
   }),
+  removeLocalTestSheetCopies: (
+    system,
+    serialNumber,
+    partNumber,
+    customerName,
+    localSaveLocation,
+    masterTemplatePath,
+    testAcceptanceRecordPath,
+    minorDeviationLogPath,
+    fileNames
+  ) => ipcRenderer.invoke('remove-local-test-sheet-copies', {
+    system,
+    serialNumber,
+    partNumber,
+    customerName,
+    localSaveLocation,
+    masterTemplatePath,
+    testAcceptanceRecordPath,
+    minorDeviationLogPath,
+    fileNames
+  }),
   findNetworkSystemFolder: (partNumber, customerName, configuredLocation) =>
     ipcRenderer.invoke('find-network-system-folder', {
       partNumber,

@@ -20,6 +20,7 @@ import {
   LEGACY_SYSTEM_UNBOXING_STEP_NAME,
   SYSTEM_FOLDERS_STEP_NAME,
   SYSTEM_FOLDERS_STEP_INSTRUCTIONS,
+  OBSOLETE_SETUP_STEP_NAMES,
   IN_VIA_VIRSA_CALIBRATION_STEP_NAMES,
   normalizeInViaVirsaWorkflowSteps,
   PAT_TEST_STEP_INSTRUCTIONS,
@@ -330,8 +331,16 @@ export class StorageService {
         ? SYSTEM_UNBOXING_STEP_NAME
         : step.name === 'Fiber Probe Head Coupling & Shutter Test'
           ? 'Fibre Probe Head Coupling & Shutter Test'
-          : step.name
-    }));
+          : step.name,
+      ...(step.name === CREATE_TEST_SHEETS_STEP_NAME
+        ? { instructions: [...CREATE_TEST_SHEETS_STEP_INSTRUCTIONS] }
+        : {})
+    })).filter((step) =>
+      !(
+        (step.stage === 'Set Up' || step.stage === 'Setup') &&
+        OBSOLETE_SETUP_STEP_NAMES.some((name) => step.name === name)
+      )
+    );
 
     const isinVia = record.system === 'inVia';
 

@@ -50,18 +50,20 @@ The application features a built-in **Excel Hub** (accessed via the top title ba
 
 ## 🔬 Laser & Grating Calibration Files
 
-In the **Calibration** stage, enter each laser wavelength and grating density combination, then open **Create Extra Data Files** to create one blank `.txt` file per combination. Files are saved under `My Documents\<serial number>\Extra Data` using names such as `532nm_2400.txt`. If any target file already exists, the app asks before replacing it. A traveller serial number is required.
+In the **Calibration** stage, enter each laser wavelength and grating density combination, then open **Create Extra Data Files** to create one blank `.txt` file per combination. Files are saved under `<Local Save Location>\<serial number>_<part number>_<customer name>\Internal data\Extra Data` using names such as `532nm_2400.txt`. If any target file already exists, the app asks before replacing it. The traveller serial number, part number, and customer name are required.
 
 ### Digital Test Sheets
 
-The **Create Test Sheets** step follows **Select Laser and Grating Combinations**. It copies the configured read-only master workbook from **Settings → Excel Hub & Network Shares → Location 1** into the system folder created by **Create System Folders**, under `Internal data\Digital Test Sheets`. The master workbook is never edited.
+The **Create Test Sheets** step follows **Select Laser and Grating Combinations**. Part 1 copies the configured read-only master workbook from **Settings → Excel Hub & Network Shares → Location 1** to the local system folder under `Internal data\Digital Test Sheets`. The master workbook is never edited.
 
 - **inLux** creates one file named `<Serial Number>_<Master Sheet File Name>`.
 - **Virsa** and **inVia** create one copy per selected combination. Each file is named `<Serial Number>_<Wavelength>nm_<Grating>_<Master Sheet File Name>`.
 - Each test-sheet value is populated at its configured cell location. The default locations match the current inVia, Virsa, and inLux sheets and can be changed per system in **Settings → Excel Hub & Network Shares → Digital Test Sheet Cell Locations**. Power meter serial numbers are also configurable and saved in Settings.
-- The step copies the individually configured **Test Acceptance Record** and **Minor Deviation Log** workbook files (Locations 2 and 3) into the root of the system folder. Settings stores each full source path, including the workbook file name, so renamed master files can be configured without changing the app.
+- Part 1 also copies the individually configured **Test Acceptance Record** and **Minor Deviation Log** workbook files (Locations 2 and 3) into the local system folder's `Internal data` directory. Part 2 populates the local copies, Part 3 publishes them to the network system folder, and Part 4 removes the local copies after publishing. Settings stores each full source path, including the workbook file name, so renamed master files can be configured without changing the app.
 
 The **Network Save Location** is configured per system in the Excel Hub settings. The **Local Save Location** is in **Settings → File Storage**; these paths and workbook source paths are retained with the other application settings.
+
+**Create System Folders** and **Create Extra Data Files** write under the configured Local Save Location, inside `<Serial Number>_<Part Number>_<Customer Name>`. The folder-creation step uses the customer data folder names discovered by **Update Network Save Location**, but creates those folders locally.
 
 If any destination file already exists, the app asks before replacing it. This operation is available in the Windows desktop app.
 

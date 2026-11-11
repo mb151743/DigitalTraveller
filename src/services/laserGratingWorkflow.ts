@@ -4,9 +4,11 @@ export const LEGACY_LASER_GRATING_SELECTION_STEP_NAME = 'Select Laser and Gratin
 export const LASER_GRATING_SELECTION_STEP_NAME = 'Select Laser & Grating Combinations';
 export const CREATE_TEST_SHEETS_STEP_NAME = 'Create Test Sheets';
 export const CREATE_TEST_SHEETS_STEP_INSTRUCTIONS = [
-  'Part 1: Copy an editable blank master test sheet into the network system folder at Internal data\\Digital Test Sheets for each laser and grating combination.',
+  'Part 1: Copy editable blank master test sheets and record templates to the Local Save Location.',
   'Name each workbook <wavelength>nm_<grating> (for example, 532nm_1200).',
-  'Part 2: Populate the copied test sheets. If population fails, the blank editable copies remain available.'
+  'Part 2: Populate the local copies. If population fails, the blank editable copies remain available.',
+  'Part 3: Publish the populated test sheets and records to the network system folder.',
+  'Part 4: Remove the local copies after confirming they were published to the network.'
 ];
 export const LASER_GRATING_FILES_STEP_NAME = 'Create Extra Data Files';
 export const PAT_TEST_STEP_NAME = 'PAT Test';
@@ -21,6 +23,7 @@ export const SAVE_WIRE_PASSWORDS_STEP_INSTRUCTIONS = [
   'Record the system WiRE passwords in System Details.'
 ];
 export const SYSTEM_FOLDERS_STEP_NAME = 'Create System Folders';
+export const OBSOLETE_SETUP_STEP_NAMES = ['New Test', 'name1'] as const;
 export const IN_VIA_VIRSA_SETUP_STEP_NAMES = [
   PAT_TEST_STEP_NAME,
   SYSTEM_UNBOXING_STEP_NAME,
@@ -68,11 +71,11 @@ export function normalizeInViaVirsaWorkflowSteps<T extends { name: string; stage
   return [...setupSteps, ...otherSteps];
 }
 export const LASER_GRATING_FILES_SAVE_INSTRUCTION =
-  'Files are saved in the configured system folder under Internal data/Extra Data.';
+  'Files are saved in the Local Save Location under <Serial Number>_<Part Number>_<Customer Name>/Internal data/Extra Data.';
 export const SYSTEM_FOLDERS_STEP_INSTRUCTIONS = [
-  'Create the system folder named <Serial Number>_<Part Number>_<Customer Name>.',
-  'Create Customer data\\Reg Backup, Customer data\\System Pictures, and each combination folder found on the network.',
-  'Create Internal data\\Digital Test Sheets and Internal data\\Extra Data. Save test sheets and records in Internal data.'
+  'Create the system folder named <Serial Number>_<Part Number>_<Customer Name> in the Local Save Location.',
+  'Create Customer data\\Reg Backup, Customer data\\System Pictures, and each discovered customer data combination folder.',
+  'Create Internal data\\Digital Test Sheets and Internal data\\Extra Data in the local system folder.'
 ];
 export const PAT_TEST_STEP_INSTRUCTIONS = [
   'Perform electrical safety inspection and Portable Appliance Testing (PAT).',

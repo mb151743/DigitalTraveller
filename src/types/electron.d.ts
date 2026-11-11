@@ -1,6 +1,7 @@
 import {
   LaserGratingCombination,
   LaserGratingFileResult,
+  LocalTestSheetCleanupResult,
   SystemFolderResult,
   TestSheetResult,
   DigitalTestSheetMetadata,
@@ -81,6 +82,17 @@ declare global {
         technicianName?: string,
         recordCellMappings?: RecordCellMappings
       ) => Promise<TestSheetResult>;
+      removeLocalTestSheetCopies: (
+        system: string,
+        serialNumber: string,
+        partNumber: string,
+        customerName: string,
+        localSaveLocation: string,
+        masterTemplatePath: string,
+        testAcceptanceRecordPath: string,
+        minorDeviationLogPath: string,
+        fileNames: string[]
+      ) => Promise<LocalTestSheetCleanupResult>;
       updateNetworkSaveLocation: (
         serialNumber: string,
         partNumber: string,
